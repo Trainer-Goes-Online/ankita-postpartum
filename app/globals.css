@@ -1,0 +1,148 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  .bodyworx-root {
+    --brand: #f24c69;
+    --brand-bright: #f87186;
+    --brand-deep: #944453;
+    --brand-soft: #fce7ec;
+    --ink: #1a0e12;
+    --ink-soft: #4a3b40;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    /* Zero-tolerance horizontal-scroll safety net. Decorative blobs in
+       sections still have overflow-hidden on the section, but this catches
+       anything that escapes. */
+    overflow-x: hidden;
+  }
+
+  body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, h4, h5 {
+    font-family: 'Gilroy', var(--font-heading), system-ui, sans-serif;
+    letter-spacing: -0.015em;
+    color: var(--ink);
+    /* Balance multi-line headings so the lines are roughly equal length —
+       prevents a 4-word line above a 1-word line. */
+    text-wrap: balance;
+  }
+
+  /* Prevent single-word orphan lines in body copy by letting the browser
+     reflow trailing words onto the previous line. Modern Chrome / Edge /
+     Safari support; older browsers fall back to normal wrapping. */
+  p, li, blockquote {
+    text-wrap: pretty;
+  }
+}
+
+@layer components {
+  .bw-wrap {
+    /* px-4 on mobile (16px), px-6 on tablet (24px), px-8 on desktop (32px).
+       Max-width caps at 1180px to keep desktop content readable. */
+    @apply mx-auto w-full max-w-[1180px] px-4 sm:px-6 lg:px-8;
+  }
+
+  .bw-cta {
+    @apply inline-flex items-center justify-center gap-2 rounded-pill bg-brand-gradient
+           px-7 py-4 font-semibold text-white shadow-glow transition-all
+           hover:translate-y-[-1px] hover:shadow-[0_18px_50px_-14px_rgba(242,76,105,0.55)]
+           active:translate-y-0 focus-visible:outline-none focus-visible:ring-4
+           focus-visible:ring-brand-ring min-h-[52px];
+  }
+
+  .bw-cta-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-pill border border-line-strong
+           bg-white px-6 py-3 font-medium text-ink transition-colors hover:border-brand
+           hover:text-brand focus-visible:outline-none focus-visible:ring-4
+           focus-visible:ring-brand-ring;
+  }
+
+  .bw-chip {
+    @apply inline-flex items-center gap-1.5 rounded-pill bg-brand-soft px-3.5 py-1.5
+           text-xs font-medium text-brand-deep;
+  }
+
+  .bw-gradient-text {
+    @apply bg-brand-gradient-x bg-clip-text text-transparent;
+  }
+
+  /* Legal pages — Privacy, Terms, Refund. Scoped utility classes that
+     restore native heading + list styling because the base layer kills
+     defaults globally for design control elsewhere. */
+  .legal-content h2 {
+    @apply mt-10 font-heading text-[20px] font-extrabold leading-snug text-ink sm:text-[24px];
+  }
+  .legal-content h3 {
+    @apply mt-6 font-heading text-[16px] font-bold leading-snug text-ink sm:text-[18px];
+  }
+  .legal-content p {
+    @apply mt-3;
+  }
+  .legal-content ul {
+    @apply mt-3 list-disc space-y-1.5 pl-6 marker:text-brand-deep;
+  }
+  .legal-content li {
+    @apply leading-relaxed;
+  }
+  .legal-content a {
+    @apply font-medium text-brand-deep underline underline-offset-2 hover:text-brand;
+  }
+  .legal-content strong {
+    @apply font-semibold text-ink;
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ *  Marquee — used by the top urgency strip on the landing hero.
+ *  The track holds two copies of the content so the loop is seamless:
+ *  we translate -50% to land exactly on the duplicated copy.
+ *  Hover pauses the animation. `prefers-reduced-motion` halts it below.
+ * ─────────────────────────────────────────────────────────────────── */
+@keyframes bw-marquee {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(-50%, 0, 0); }
+}
+
+.bw-marquee-track {
+  display: inline-flex;
+  width: max-content;
+  animation: bw-marquee 38s linear infinite;
+  will-change: transform;
+}
+
+/* Pulsing live dot used in the struggle pill. Ring scales out from the
+ * center of the parent (set via transform-origin) and fades to 0. Lower
+ * starting opacity keeps the bloom subtle, not blob-like. */
+@keyframes bw-live-ping {
+  0%   { transform: scale(1);   opacity: 0.65; }
+  70%  { transform: scale(2);   opacity: 0;    }
+  100% { transform: scale(2);   opacity: 0;    }
+}
+.bw-live-ping {
+  animation: bw-live-ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+  transform-origin: center center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .bw-marquee-track {
+    animation: none !important;
+    transform: none !important;
+  }
+}
