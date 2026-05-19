@@ -8,7 +8,7 @@ Production domain: **bodyworx.in**. Next.js 14 App-Router single-funnel site sel
 - **Styling:** Tailwind 3 + Framer Motion + Phosphor Icons + custom fonts (Plus Jakarta, Poppins, Fraunces)
 - **Payments:** Razorpay (live keys) — official `razorpay` Node SDK + browser checkout modal
 - **CRM:** Pabbly Connect webhook (fired server-side after payment verify)
-- **Tracking:** Meta Pixel (client `PageView`) + Meta CAPI (server `Sales` event) · GA4 + Clarity hooks present but IDs blank in [app/layout.tsx](app/layout.tsx)
+- **Tracking:** Meta Pixel (client `PageView` only, with Manual Advanced Matching — hashed identifiers passed to `fbq('init', PIXEL_ID, mam)` post-conversion) + Meta CAPI (server dual-event `Purchase` + `sales` in one POST, full EMQ payload with 6 hashed PII fields + raw `fbc`/`fbp`/IP/UA + `event_source_url`) · GA4 + Clarity wired via env vars
 - **Deploy:** Vercel → `bodyworx.in`
 
 ## Architecture
@@ -27,7 +27,7 @@ app/
   api/razorpay/verify-payment/route.ts — POST: HMAC-verifies, fetches paid amount, fires Pabbly + Meta CAPI
 
 components/
-  MetaPixel.tsx        — Loads fbevents.js + fires PageView on route changes (no-op if NEXT_PUBLIC_META_PIXEL_ID unset)
+  MetaPixel.tsx        — Loads fbevents.js + fires PageView on route changes with Manual Advanced Matching (reads hashed user_data from sessionStorage via lib/mam.ts). No-op if NEXT_PUBLIC_META_PIXEL_ID unset
   UtmCapture.tsx       — Persists utm_* to bodyworx_utm cookie on every page mount
   StickyCTA.tsx        — Bottom-fixed "Enroll Now" bar
   PaymentLogos.tsx     — UPI / cards / netbanking trust row
@@ -41,6 +41,7 @@ lib/
   coupons.ts           — Server-authoritative coupon validation (only `tgotest2025` = 100% off)
   utm.ts               — UTM cookie read/write + URL sync helpers
   analytics.ts         — dataLayer push helpers (GA4 only — Meta uses CAPI server-side)
+  mam.ts               — Manual Advanced Matching: SHA-256 hashing helpers (SubtleCrypto) + sessionStorage read/write. Same normalization rules as server CAPI so hashes match across both sources
   testimonials.ts      — Testimonial data array
 
 public/
@@ -70,8 +71,11 @@ public/
 - **Payment signature verify:** [app/api/razorpay/verify-payment/route.ts:224-234](app/api/razorpay/verify-payment/route.ts#L224-L234)
 - **Authoritative paid-amount fetch:** [app/api/razorpay/verify-payment/route.ts:114-139](app/api/razorpay/verify-payment/route.ts#L114-L139)
 - **Pabbly payload build + POST:** [app/api/razorpay/verify-payment/route.ts:249-295](app/api/razorpay/verify-payment/route.ts#L249-L295)
-- **Meta CAPI `Sales` event:** [app/api/razorpay/verify-payment/route.ts:21-87](app/api/razorpay/verify-payment/route.ts#L21-L87) — gated to `productionHosts` only
-- **Production host allowlist:** [lib/checkout-config.ts:44](lib/checkout-config.ts#L44) — `['bodyworx.in', 'www.bodyworx.in']`
+- **Meta CAPI dual-event sender:** [app/api/razorpay/verify-payment/route.ts](app/api/razorpay/verify-payment/route.ts) — `sendMetaCapiEvents()` fires `Purchase` + `sales` in one POST. Gated by (a) production host, (b) `!isFreeOrder`, (c) both env vars set
+- **Hash + normalization helpers:** `hashEmail` / `hashPhone` / `hashName` / `hashCity` / `hashCountry` at top of verify-payment route — follow Meta's spec exactly
+- **Production host allowlist + CAPI event names + fallback URL:** [lib/checkout-config.ts](lib/checkout-config.ts) under the `capi:` block — `standardEventName`, `customEventName`, `productionHosts`, `fallbackEventSourceUrl`
+- **Client `eventSourceUrl` plumbing:** [app/checkout/page.tsx](app/checkout/page.tsx) — both `handlePaymentSuccess` and `handleFreeOrderSuccess` send `window.location.href` in the verify-payment POST body
+- **Manual Advanced Matching:** [lib/mam.ts](lib/mam.ts) (hash + storage), [components/MetaPixel.tsx](components/MetaPixel.tsx) (read + `fbq('init', PIXEL_ID, mam)`), [app/checkout/page.tsx](app/checkout/page.tsx) calls `writeMam()` in both success handlers before `router.push`
 - **Client Razorpay modal:** [app/checkout/page.tsx:421-443](app/checkout/page.tsx#L421-L443)
 - **Metadata + metadataBase:** [app/layout.tsx:43-58](app/layout.tsx#L43-L58)
 - **GA4 / Clarity IDs (currently empty):** [app/layout.tsx:38-39](app/layout.tsx#L38-L39)
@@ -123,7 +127,7 @@ GA4 + Clarity IDs are literals in [app/layout.tsx](app/layout.tsx) (not env vars
 2. Server validates coupon, creates Razorpay order (or signs a free-order token if 100% off)
 3. Client opens Razorpay modal; on success → POST `/api/razorpay/verify-payment` with `{orderId, paymentId, signature, customer, utm, couponCode?}`
 4. Server HMAC-verifies signature, fetches true paid amount from Razorpay
-5. Server fires Pabbly webhook (always) and Meta CAPI `Sales` event (production hosts only)
+5. Server fires Pabbly webhook (always) and Meta CAPI dual-event `Purchase` + `sales` (production hosts only, paid orders only — free QA-coupon orders skip CAPI)
 6. Client routes to `/thank-you?amount=…&currency=INR`
 
 ## Commands

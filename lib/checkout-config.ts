@@ -44,13 +44,22 @@ export const CHECKOUT_CONFIG = {
   },
 
   capi: {
-    eventName: 'sales',
+    // Two events fire from CAPI per successful transaction (single POST,
+    // 2-element data array). The standard "Purchase" event drives campaign
+    // optimization + AEM iOS auto-priority; the custom "sales" event is our
+    // internal source-of-truth label. Both share event_id, user_data,
+    // event_source_url, and custom_data.
+    standardEventName: 'Purchase',
+    customEventName: 'sales',
     value: PRICE_RUPEES,
     currency: 'INR',
     // CAPI fires only when the request's host matches one of these.
     // Localhost + Vercel preview URLs (*.vercel.app) are deliberately excluded
     // so test purchases don't pollute Meta's pixel data.
     productionHosts: ['bodyworx.in', 'www.bodyworx.in'],
+    // Used when the client doesn't send eventSourceUrl. Restricted-category
+    // accounts require event_source_url on every event or Meta drops them.
+    fallbackEventSourceUrl: 'https://bodyworx.in/checkout',
   },
 
   thankYouPath: '/thank-you',

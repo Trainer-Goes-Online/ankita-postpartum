@@ -18,55 +18,109 @@ type Utm = {
   id?: string;
 };
 
-async function sendMetaCapiEvent(params: {
+function sha256Hex(value: string): string {
+  return crypto.createHash('sha256').update(value).digest('hex');
+}
+
+// Meta CAPI normalization rules — see META_CAPI_OPTIMIZATION_GUIDE.md.
+// Each helper returns the hashed value or undefined when the field is empty
+// so we don't ship a sha256 of the empty string (which would still match).
+function hashEmail(email: string): string | undefined {
+  const v = email.trim().toLowerCase();
+  return v ? sha256Hex(v) : undefined;
+}
+function hashPhone(phone: string): string | undefined {
+  // E.164 without "+": digits only.
+  const v = phone.replace(/\D/g, '');
+  return v ? sha256Hex(v) : undefined;
+}
+function hashName(name: string): string | undefined {
+  const v = name.trim().toLowerCase();
+  return v ? sha256Hex(v) : undefined;
+}
+function hashCity(city: string): string | undefined {
+  // Strip everything that's not a-z — Meta spec, e.g. "New Delhi" → "newdelhi".
+  const v = city.toLowerCase().replace(/[^a-z]/g, '');
+  return v ? sha256Hex(v) : undefined;
+}
+function hashCountry(country: string): string | undefined {
+  // ISO 3166-1 alpha-2, lowercase.
+  const v = country.trim().toLowerCase();
+  return v ? sha256Hex(v) : undefined;
+}
+
+/**
+ * Fires TWO events in a single POST: the standard "Purchase" (drives campaign
+ * optimization + AEM iOS auto-priority) and the custom "sales" event (internal
+ * source-of-truth label). Both share event_id, event_source_url, user_data,
+ * and custom_data — only event_name differs.
+ */
+async function sendMetaCapiEvents(params: {
   pixelId: string;
   accessToken: string;
   paymentId: string;
   email: string;
   phone: string;
+  firstName: string;
+  lastName: string;
+  city: string;
+  country: string;
   fbc: string | undefined;
   fbp: string | undefined;
   clientIp: string | undefined;
   clientUserAgent: string | undefined;
+  eventSourceUrl: string;
   valueRupees: number;
   currency: string;
   utm: Utm;
 }) {
-  const hashedEmail = crypto
-    .createHash('sha256')
-    .update(params.email.trim().toLowerCase())
-    .digest('hex');
+  const em = hashEmail(params.email);
+  const ph = hashPhone(params.phone);
+  const fn = hashName(params.firstName);
+  const ln = hashName(params.lastName);
+  const ct = hashCity(params.city);
+  const country = hashCountry(params.country);
 
-  // Normalise phone to digits only (E.164 without +) before hashing
-  const rawPhone = params.phone.replace(/\D/g, '');
-  const hashedPhone = rawPhone
-    ? crypto.createHash('sha256').update(rawPhone).digest('hex')
-    : undefined;
+  const userData = {
+    ...(em && { em: [em] }),
+    ...(ph && { ph: [ph] }),
+    ...(fn && { fn: [fn] }),
+    ...(ln && { ln: [ln] }),
+    ...(ct && { ct: [ct] }),
+    ...(country && { country: [country] }),
+    // Raw (unhashed) per Meta spec — hashing breaks them as matching signals.
+    ...(params.fbc && { fbc: params.fbc }),
+    ...(params.fbp && { fbp: params.fbp }),
+    ...(params.clientUserAgent && { client_user_agent: params.clientUserAgent }),
+    ...(params.clientIp && { client_ip_address: params.clientIp }),
+  };
 
-  const event = {
-    event_name: CHECKOUT_CONFIG.capi.eventName,
+  const customData = {
+    currency: params.currency,
+    value: params.valueRupees,
+    payment_id: params.paymentId,
+    ...(params.utm.source && { utm_source: params.utm.source }),
+    ...(params.utm.medium && { utm_medium: params.utm.medium }),
+    ...(params.utm.campaign && { utm_campaign: params.utm.campaign }),
+    ...(params.utm.content && { utm_content: params.utm.content }),
+    ...(params.utm.term && { utm_term: params.utm.term }),
+    ...(params.utm.id && { utm_id: params.utm.id }),
+  };
+
+  const eventBase = {
     event_time: Math.floor(Date.now() / 1000),
     event_id: params.paymentId,
     action_source: 'website',
-    user_data: {
-      em: [hashedEmail],
-      ...(hashedPhone && { ph: [hashedPhone] }),
-      ...(params.fbc && { fbc: params.fbc }),
-      ...(params.fbp && { fbp: params.fbp }),
-      ...(params.clientUserAgent && { client_user_agent: params.clientUserAgent }),
-      ...(params.clientIp && { client_ip_address: params.clientIp }),
-    },
-    custom_data: {
-      currency: params.currency,
-      value: params.valueRupees,
-      payment_id: params.paymentId,
-      ...(params.utm.source && { utm_source: params.utm.source }),
-      ...(params.utm.medium && { utm_medium: params.utm.medium }),
-      ...(params.utm.campaign && { utm_campaign: params.utm.campaign }),
-      ...(params.utm.content && { utm_content: params.utm.content }),
-      ...(params.utm.term && { utm_term: params.utm.term }),
-      ...(params.utm.id && { utm_id: params.utm.id }),
-    },
+    event_source_url: params.eventSourceUrl,
+    user_data: userData,
+    custom_data: customData,
+  };
+
+  const payload = {
+    data: [
+      { event_name: CHECKOUT_CONFIG.capi.standardEventName, ...eventBase },
+      { event_name: CHECKOUT_CONFIG.capi.customEventName,   ...eventBase },
+    ],
   };
 
   const res = await fetch(
@@ -74,7 +128,7 @@ async function sendMetaCapiEvent(params: {
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ data: [event] }),
+      body: JSON.stringify(payload),
     }
   );
 
@@ -149,6 +203,7 @@ export async function POST(req: NextRequest) {
       utm,
       couponCode,
       freeOrderToken,
+      eventSourceUrl,
     }: {
       orderId: string;
       paymentId?: string;
@@ -157,6 +212,7 @@ export async function POST(req: NextRequest) {
       utm: UtmData;
       couponCode?: string;
       freeOrderToken?: string;
+      eventSourceUrl?: string;
     } = body;
 
     if (!orderId) {
@@ -295,8 +351,10 @@ export async function POST(req: NextRequest) {
     }
 
     // ── OPTIONAL BLOCK: META CONVERSIONS API ─────────────────────────────────
-    // The "sales" event fires only on the real production domain so localhost +
-    // Vercel preview URLs don't pollute Meta's pixel data with test events.
+    // Fires TWO events in a single POST: standard "Purchase" + custom "sales".
+    // Both events fire only on the real production domain AND only for paid
+    // orders — localhost, Vercel preview URLs, and free QA-coupon orders are
+    // deliberately skipped so test data doesn't pollute Meta's pixel.
     const requestHost = (req.headers.get('host') ?? '')
       .toLowerCase()
       .split(':')[0]; // strip ":3001" etc.
@@ -308,9 +366,11 @@ export async function POST(req: NextRequest) {
       process.env.NEXT_PUBLIC_META_PIXEL_ID ?? process.env.META_PIXEL_ID;
     const metaAccessToken = process.env.META_CAPI_ACCESS_TOKEN;
 
-    if (!isProductionHost) {
+    if (isFreeOrder) {
+      console.log('[verify-payment] Meta CAPI skipped — free order (100%-off coupon)');
+    } else if (!isProductionHost) {
       console.log(
-        `[verify-payment] Meta CAPI "sales" event skipped — request host "${requestHost}" is not a production domain (allowed: ${CHECKOUT_CONFIG.capi.productionHosts.join(', ')})`,
+        `[verify-payment] Meta CAPI skipped — request host "${requestHost}" is not a production domain (allowed: ${CHECKOUT_CONFIG.capi.productionHosts.join(', ')})`,
       );
     } else if (metaPixelId && metaAccessToken) {
       const fbc = req.cookies.get('_fbc')?.value;
@@ -321,6 +381,13 @@ export async function POST(req: NextRequest) {
         undefined;
       const clientUserAgent = req.headers.get('user-agent') ?? undefined;
       const fullPhone = `${customer.dialCode}${customer.phone}`;
+
+      // Restricted-category accounts require event_source_url on every event
+      // or Meta drops them after the 60-day enforcement deadline. Prefer the
+      // client-sent URL (window.location.href at the moment of verify); fall
+      // back to the production checkout URL when missing.
+      const resolvedEventSourceUrl =
+        eventSourceUrl?.trim() || CHECKOUT_CONFIG.capi.fallbackEventSourceUrl;
 
       // Read the bodyworx_utm cookie (written by <UtmCapture/> on every page
       // mount). Decoded shape: { source, medium, campaign, content, term, id }.
@@ -335,21 +402,29 @@ export async function POST(req: NextRequest) {
       }
 
       try {
-        const capiResult = await sendMetaCapiEvent({
+        const capiResult = await sendMetaCapiEvents({
           pixelId: metaPixelId,
           accessToken: metaAccessToken,
           paymentId: resolvedPaymentId,
           email: customer.email,
           phone: fullPhone,
+          firstName: customer.firstName,
+          lastName: customer.lastName,
+          city: customer.city,
+          country: customer.countryCode,
           fbc,
           fbp,
           clientIp,
           clientUserAgent,
+          eventSourceUrl: resolvedEventSourceUrl,
           valueRupees: paidAmountRupeesNumeric,
           currency: paidCurrency,
           utm,
         });
-        console.log('[verify-payment] Meta CAPI "sales" event sent:', capiResult);
+        console.log(
+          `[verify-payment] Meta CAPI "${CHECKOUT_CONFIG.capi.standardEventName}" + "${CHECKOUT_CONFIG.capi.customEventName}" events sent:`,
+          capiResult,
+        );
       } catch (err) {
         console.error('[verify-payment] Meta CAPI error:', err);
       }

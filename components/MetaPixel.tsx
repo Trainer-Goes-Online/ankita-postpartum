@@ -3,19 +3,28 @@
 import Script from 'next/script';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef } from 'react';
+import { readMam } from '@/lib/mam';
 
 /* ──────────────────────────────────────────────────────────────────────
  *  <MetaPixel /> — loads the Meta Pixel base script and fires `PageView`
- *  on every page of the funnel:
- *   • Initial load: the inline script calls fbq('init') + fbq('track',
- *     'PageView') so the Pixel Helper Chrome extension picks up the
- *     Pixel ID immediately on first paint.
- *   • Subsequent client-side navigations (Next.js App-Router pathname
- *     changes): the effect below fires fbq('track', 'PageView') again,
- *     using the `hasInitialFired` ref to skip the duplicate first call.
+ *  on every page of the funnel WITH Manual Advanced Matching.
  *
- *  Gated by NEXT_PUBLIC_META_PIXEL_ID — if the env var is missing,
- *  the component renders nothing and no pixel script loads.
+ *  Loader: the inline <Script> only sets up the fbq queue function and
+ *  loads fbevents.js. It does NOT call init / track — those happen in
+ *  useEffect so we can read MAM from sessionStorage first.
+ *
+ *  Init / track: useEffect reads MAM (written by /checkout on successful
+ *  conversion — see lib/mam.ts → writeMam) and passes the hashed user_data
+ *  block to fbq('init', PIXEL_ID, hashedMam). All subsequent fbq events
+ *  for this pixel carry that user_data — including the PageView fired
+ *  immediately after.
+ *
+ *  On client-side route changes, useEffect re-reads MAM and re-inits the
+ *  pixel only when the MAM data has changed (defends against redundant
+ *  inits when MAM hasn't moved).
+ *
+ *  Gated by NEXT_PUBLIC_META_PIXEL_ID — if the env var is missing the
+ *  component renders nothing and no pixel script loads.
  * ─────────────────────────────────────────────────────────────────── */
 
 declare global {
@@ -28,26 +37,34 @@ declare global {
 export default function MetaPixel() {
   const pixelId = process.env.NEXT_PUBLIC_META_PIXEL_ID;
   const pathname = usePathname();
-  const hasInitialFired = useRef(false);
+  const lastMamKey = useRef<string | null>(null);
 
   useEffect(() => {
     if (!pixelId) return;
-    if (!hasInitialFired.current) {
-      // The inline base script already fires PageView on first load,
-      // so skip the very first effect run to avoid a duplicate event.
-      hasInitialFired.current = true;
-      return;
+    if (typeof window === 'undefined' || typeof window.fbq !== 'function') return;
+
+    const mam = readMam();
+    const mamKey = mam ? JSON.stringify(mam) : '';
+
+    // (Re-)init the pixel whenever MAM data changes — e.g. transitioning
+    // from "no MAM" (first load) → "MAM present" (after checkout success).
+    if (mamKey !== lastMamKey.current) {
+      lastMamKey.current = mamKey;
+      if (mam) {
+        window.fbq('init', pixelId, mam);
+      } else {
+        window.fbq('init', pixelId);
+      }
     }
-    if (typeof window !== 'undefined' && typeof window.fbq === 'function') {
-      window.fbq('track', 'PageView');
-    }
+
+    window.fbq('track', 'PageView');
   }, [pathname, pixelId]);
 
   if (!pixelId) return null;
 
   return (
     <>
-      <Script id="meta-pixel" strategy="afterInteractive">
+      <Script id="meta-pixel-loader" strategy="afterInteractive">
         {`
 !function(f,b,e,v,n,t,s)
 {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
@@ -57,8 +74,6 @@ n.queue=[];t=b.createElement(e);t.async=!0;
 t.src=v;s=b.getElementsByTagName(e)[0];
 s.parentNode.insertBefore(t,s)}(window, document,'script',
 'https://connect.facebook.net/en_US/fbevents.js');
-fbq('init', '${pixelId}');
-fbq('track', 'PageView');
         `}
       </Script>
       <noscript>

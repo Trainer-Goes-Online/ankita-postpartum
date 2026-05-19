@@ -32,6 +32,7 @@ import PaymentLogos from '@/components/PaymentLogos';
 import { CHECKOUT_CONFIG } from '@/lib/checkout-config';
 import type { CouponResult, CouponSuccess } from '@/lib/coupons';
 import { readUtmCookie, readUtmFromUrl, writeUtmCookie } from '@/lib/utm';
+import { writeMam } from '@/lib/mam';
 
 // ── Palette (isolated) ───────────────────────────────────────────────────────
 const C = {
@@ -473,10 +474,25 @@ function CheckoutGrid() {
             dialCode: params.dialCode,
           },
           utm,
+          // Sent for symmetry with the paid path — server ignores it on free
+          // orders (CAPI block is guarded out for free orders).
+          eventSourceUrl: typeof window !== 'undefined' ? window.location.href : undefined,
         }),
       });
       const result = await verifyRes.json();
       if (!result.success) throw new Error(result.error ?? 'Free registration failed.');
+      // Stash hashed identifiers in sessionStorage so the next PageView
+      // (/thank-you) carries Manual Advanced Matching data — same hashes as
+      // server CAPI sends, so Meta sees a consistent user_data block across
+      // browser + server.
+      await writeMam({
+        email: fields.email.trim(),
+        phone: `${params.dialCode}${fields.phone.trim()}`,
+        firstName: fields.firstName.trim(),
+        lastName: fields.lastName.trim(),
+        city: fields.city.trim(),
+        country: countryCode,
+      });
       router.push(buildTYUrl({ amount: 0, currency: result.currency ?? 'INR', free: true }));
     } catch (err) {
       setLoading(false);
@@ -505,10 +521,25 @@ function CheckoutGrid() {
             dialCode,
           },
           utm,
+          // The URL where the conversion happened — passed to Meta CAPI as
+          // event_source_url. Required for restricted-category accounts.
+          eventSourceUrl: typeof window !== 'undefined' ? window.location.href : undefined,
         }),
       });
       const result = await verifyRes.json();
       if (!result.success) throw new Error(result.error ?? 'Payment verification failed.');
+      // Stash hashed identifiers in sessionStorage so the next PageView
+      // (/thank-you) carries Manual Advanced Matching data — same hashes as
+      // server CAPI sends, so Meta sees a consistent user_data block across
+      // browser + server.
+      await writeMam({
+        email: fields.email.trim(),
+        phone: `${dialCode}${fields.phone.trim()}`,
+        firstName: fields.firstName.trim(),
+        lastName: fields.lastName.trim(),
+        city: fields.city.trim(),
+        country: countryCode,
+      });
       router.push(buildTYUrl({ amount: result.amount, currency: result.currency }));
     } catch (err) {
       setLoading(false);
