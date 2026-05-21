@@ -7,6 +7,7 @@
  */
 
 import { readMam } from './mam';
+import { getOrCreateExternalId } from './external-id';
 
 declare global {
   interface Window {
@@ -69,11 +70,14 @@ export function trackPurchaseComplete(params: {
  *   "Browser eventID must equal server event_id, and event_name must match
  *   exactly. Both events must arrive within a 48-hour window."
  *
- * MAM handling: this funnel stashes hashed identifiers in sessionStorage
- * via writeMam() and applies them via fbq('init', PIXEL_ID, mam) on the
- * /thank-you mount. But the Purchase event fires BEFORE that route change,
- * so we also re-init the pixel here with whatever MAM was just written —
- * gives the browser Purchase the same 9+/10 EMQ as the server CAPI event.
+ * MAM + external_id handling: this funnel stashes hashed identifiers in
+ * the bw_mam cookie (via writeMam) and the bw_uid cookie (via
+ * getOrCreateExternalId). MetaPixel applies them via
+ * fbq('init', PIXEL_ID, { external_id, ...mam }) on every PageView, but
+ * the Purchase event fires BEFORE the /thank-you route change, so we
+ * re-init the pixel here with the same identity block — keeps the
+ * browser Purchase at 9+/10 EMQ and consistent with the server CAPI
+ * Purchase (same external_id hashed on both sides).
  *
  * Call this AFTER writeMam() and BEFORE router.push.
  *
@@ -90,12 +94,16 @@ export function trackPurchasePixel(params: {
   if (typeof window === 'undefined' || !window.fbq) return;
   const pixelId = process.env.NEXT_PUBLIC_META_PIXEL_ID;
   if (!pixelId) return;
-  // Re-init the pixel with MAM (already stashed by writeMam) so the
-  // Purchase event below inherits the hashed identity. MetaPixel.tsx
-  // does the same on route change for PageView; we do it inline here
-  // so Purchase fires WITH MAM on the current page before navigation.
+  // Re-init the pixel with MAM (already stashed by writeMam) + external_id
+  // (bw_uid cookie, always present) so the Purchase event below inherits
+  // the same identity block MetaPixel uses for PageView. Without this,
+  // Meta would dedupe browser↔server Purchase by eventID but the browser
+  // event would carry less user_data, hurting attribution confidence.
+  const externalId = getOrCreateExternalId();
   const mam = readMam();
-  if (mam) window.fbq('init', pixelId, mam);
+  const matching: Record<string, string> = { external_id: externalId };
+  if (mam) Object.assign(matching, mam);
+  window.fbq('init', pixelId, matching);
   window.fbq(
     'track',
     'Purchase',
