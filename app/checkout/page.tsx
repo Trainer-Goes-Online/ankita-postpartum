@@ -311,6 +311,34 @@ function CheckoutGrid() {
     writeUtmCookie(urlUtm);
   }, []);
 
+  // Form-fill Manual Advanced Matching capture.
+  // Debounced 500ms after the last keystroke — when the entire form is
+  // validly filled, hash identifiers and persist to the bw_mam cookie. This
+  // is what lifts PageView EMQ across the user's future visits: even if
+  // they bail without paying, the 30-day cookie means any return visit
+  // (landing, /checkout, any page) fires PageView with the full hashed
+  // user_data block. The post-conversion writeMam calls in
+  // handlePaymentSuccess / handleFreeOrderSuccess remain as a defence in
+  // depth in case the 500ms window never elapsed (e.g. ultra-fast submit).
+  useEffect(() => {
+    const validationErrors = validateFields(fields, countryCode);
+    if (Object.keys(validationErrors).length > 0) return;
+
+    const timer = setTimeout(() => {
+      const selectedCountry = COUNTRIES.find((c) => c.code === countryCode) ?? COUNTRIES[0];
+      writeMam({
+        email: fields.email.trim(),
+        phone: `${selectedCountry.dial}${fields.phone.trim()}`,
+        firstName: fields.firstName.trim(),
+        lastName: fields.lastName.trim(),
+        city: fields.city.trim(),
+        country: countryCode,
+      });
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [fields, countryCode]);
+
   const showToast = useCallback((msg: string) => {
     setToast(msg);
     if (toastTimer.current) clearTimeout(toastTimer.current);

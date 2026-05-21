@@ -65,6 +65,7 @@ async function sendMetaCapiEvents(params: {
   lastName: string;
   city: string;
   country: string;
+  externalId: string | undefined;
   fbc: string | undefined;
   fbp: string | undefined;
   clientIp: string | undefined;
@@ -80,6 +81,12 @@ async function sendMetaCapiEvents(params: {
   const ln = hashName(params.lastName);
   const ct = hashCity(params.city);
   const country = hashCountry(params.country);
+  // External ID is the bw_uid cookie value (anonymous UUID). Hashing rules:
+  // trim + lowercase + sha256 — must match the browser pixel's internal
+  // hashing so Meta sees one identity across browser PageView + CAPI events.
+  const externalId = params.externalId
+    ? sha256Hex(params.externalId.trim().toLowerCase())
+    : undefined;
 
   const userData = {
     ...(em && { em: [em] }),
@@ -88,6 +95,7 @@ async function sendMetaCapiEvents(params: {
     ...(ln && { ln: [ln] }),
     ...(ct && { ct: [ct] }),
     ...(country && { country: [country] }),
+    ...(externalId && { external_id: [externalId] }),
     // Raw (unhashed) per Meta spec — hashing breaks them as matching signals.
     ...(params.fbc && { fbc: params.fbc }),
     ...(params.fbp && { fbp: params.fbp }),
@@ -375,6 +383,10 @@ export async function POST(req: NextRequest) {
     } else if (metaPixelId && metaAccessToken) {
       const fbc = req.cookies.get('_fbc')?.value;
       const fbp = req.cookies.get('_fbp')?.value;
+      // External ID — anonymous UUID written by lib/external-id.ts on first
+      // browser visit. Present on every PageView and now on every CAPI event,
+      // letting Meta stitch the user's full journey to this purchase.
+      const externalId = req.cookies.get('bw_uid')?.value;
       const clientIp =
         req.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
         req.headers.get('x-real-ip') ??
@@ -412,6 +424,7 @@ export async function POST(req: NextRequest) {
           lastName: customer.lastName,
           city: customer.city,
           country: customer.countryCode,
+          externalId,
           fbc,
           fbp,
           clientIp,

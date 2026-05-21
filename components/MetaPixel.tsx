@@ -4,24 +4,27 @@ import Script from 'next/script';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef } from 'react';
 import { readMam } from '@/lib/mam';
+import { getOrCreateExternalId } from '@/lib/external-id';
 
 /* ──────────────────────────────────────────────────────────────────────
  *  <MetaPixel /> — loads the Meta Pixel base script and fires `PageView`
- *  on every page of the funnel WITH Manual Advanced Matching.
+ *  on every page of the funnel with Manual Advanced Matching + external_id.
  *
  *  Loader: the inline <Script> only sets up the fbq queue function and
  *  loads fbevents.js. It does NOT call init / track — those happen in
- *  useEffect so we can read MAM from sessionStorage first.
+ *  useEffect so we can read MAM + external_id from cookies first.
  *
- *  Init / track: useEffect reads MAM (written by /checkout on successful
- *  conversion — see lib/mam.ts → writeMam) and passes the hashed user_data
- *  block to fbq('init', PIXEL_ID, hashedMam). All subsequent fbq events
- *  for this pixel carry that user_data — including the PageView fired
- *  immediately after.
+ *  Identity payload passed to fbq('init', PIXEL_ID, matching):
+ *    - external_id: raw UUID from bw_uid cookie (Meta hashes client-side).
+ *      Present on EVERY PageView from the user's very first visit — cookie
+ *      is created on demand by getOrCreateExternalId().
+ *    - em, ph, fn, ln, ct, country: hashed values read from bw_mam cookie
+ *      (written by /checkout's form-fill effect + post-conversion handlers).
+ *      Present once the user has filled the checkout form OR converted;
+ *      persists 30 days so returning visitors carry MAM on landing.
  *
- *  On client-side route changes, useEffect re-reads MAM and re-inits the
- *  pixel only when the MAM data has changed (defends against redundant
- *  inits when MAM hasn't moved).
+ *  On client-side route changes, useEffect re-reads both cookies and
+ *  re-inits the pixel only when the matching object has changed.
  *
  *  Gated by NEXT_PUBLIC_META_PIXEL_ID — if the env var is missing the
  *  component renders nothing and no pixel script loads.
@@ -37,24 +40,27 @@ declare global {
 export default function MetaPixel() {
   const pixelId = process.env.NEXT_PUBLIC_META_PIXEL_ID;
   const pathname = usePathname();
-  const lastMamKey = useRef<string | null>(null);
+  const lastKey = useRef<string | null>(null);
 
   useEffect(() => {
     if (!pixelId) return;
     if (typeof window === 'undefined' || typeof window.fbq !== 'function') return;
 
+    // Always present (creates on first visit, otherwise reads cookie).
+    const externalId = getOrCreateExternalId();
+    // Present once the user has filled the checkout form or converted —
+    // returning visitors carry this on every PageView for 30 days.
     const mam = readMam();
-    const mamKey = mam ? JSON.stringify(mam) : '';
 
-    // (Re-)init the pixel whenever MAM data changes — e.g. transitioning
-    // from "no MAM" (first load) → "MAM present" (after checkout success).
-    if (mamKey !== lastMamKey.current) {
-      lastMamKey.current = mamKey;
-      if (mam) {
-        window.fbq('init', pixelId, mam);
-      } else {
-        window.fbq('init', pixelId);
-      }
+    const matching: Record<string, string> = { external_id: externalId };
+    if (mam) Object.assign(matching, mam);
+
+    // Re-init only when the matching block actually changes. Calling init
+    // with identical options is harmless but we keep it tight.
+    const key = JSON.stringify(matching);
+    if (key !== lastKey.current) {
+      lastKey.current = key;
+      window.fbq('init', pixelId, matching);
     }
 
     window.fbq('track', 'PageView');

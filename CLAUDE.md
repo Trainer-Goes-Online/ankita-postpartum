@@ -8,7 +8,7 @@ Production domain: **bodyworx.in**. Next.js 14 App-Router single-funnel site sel
 - **Styling:** Tailwind 3 + Framer Motion + Phosphor Icons + custom fonts (Plus Jakarta, Poppins, Fraunces)
 - **Payments:** Razorpay (live keys) — official `razorpay` Node SDK + browser checkout modal
 - **CRM:** Pabbly Connect webhook (fired server-side after payment verify)
-- **Tracking:** Meta Pixel (client `PageView` only, with Manual Advanced Matching — hashed identifiers passed to `fbq('init', PIXEL_ID, mam)` post-conversion) + Meta CAPI (server dual-event `Purchase` + `sales` in one POST, full EMQ payload with 6 hashed PII fields + raw `fbc`/`fbp`/IP/UA + `event_source_url`) · GA4 + Clarity wired via env vars
+- **Tracking:** Meta Pixel (client `PageView` only, with Manual Advanced Matching + persistent `external_id` — hashed identifiers from `bw_mam` cookie + UUID from `bw_uid` cookie passed to `fbq('init', PIXEL_ID, matching)` on every PageView; MAM cookie written 500ms after the checkout form becomes valid so returning visitors carry MAM on landing) + Meta CAPI (server dual-event `Purchase` + `sales` in one POST, full EMQ payload with 6 hashed PII fields + hashed `external_id` + raw `fbc`/`fbp`/IP/UA + `event_source_url`) · GA4 + Clarity wired via env vars
 - **Deploy:** Vercel → `bodyworx.in`
 
 ## Architecture
@@ -41,7 +41,8 @@ lib/
   coupons.ts           — Server-authoritative coupon validation (only `tgotest2025` = 100% off)
   utm.ts               — UTM cookie read/write + URL sync helpers
   analytics.ts         — dataLayer push helpers (GA4 only — Meta uses CAPI server-side)
-  mam.ts               — Manual Advanced Matching: SHA-256 hashing helpers (SubtleCrypto) + sessionStorage read/write. Same normalization rules as server CAPI so hashes match across both sources
+  mam.ts               — Manual Advanced Matching: SHA-256 hashing helpers (SubtleCrypto) + `bw_mam` cookie read/write (30-day TTL). Same normalization rules as server CAPI so hashes match across both sources
+  external-id.ts       — Anonymous persistent browser UUID stored in `bw_uid` cookie (365-day TTL). Read by MetaPixel for every PageView + by server CAPI for Purchase + sales
   testimonials.ts      — Testimonial data array
 
 public/
@@ -75,7 +76,8 @@ public/
 - **Hash + normalization helpers:** `hashEmail` / `hashPhone` / `hashName` / `hashCity` / `hashCountry` at top of verify-payment route — follow Meta's spec exactly
 - **Production host allowlist + CAPI event names + fallback URL:** [lib/checkout-config.ts](lib/checkout-config.ts) under the `capi:` block — `standardEventName`, `customEventName`, `productionHosts`, `fallbackEventSourceUrl`
 - **Client `eventSourceUrl` plumbing:** [app/checkout/page.tsx](app/checkout/page.tsx) — both `handlePaymentSuccess` and `handleFreeOrderSuccess` send `window.location.href` in the verify-payment POST body
-- **Manual Advanced Matching:** [lib/mam.ts](lib/mam.ts) (hash + storage), [components/MetaPixel.tsx](components/MetaPixel.tsx) (read + `fbq('init', PIXEL_ID, mam)`), [app/checkout/page.tsx](app/checkout/page.tsx) calls `writeMam()` in both success handlers before `router.push`
+- **Manual Advanced Matching:** [lib/mam.ts](lib/mam.ts) (hash + `bw_mam` cookie), [components/MetaPixel.tsx](components/MetaPixel.tsx) (read + `fbq('init', PIXEL_ID, matching)`), [app/checkout/page.tsx](app/checkout/page.tsx) calls `writeMam()` in a 500ms-debounced effect once the form is valid AND in both success handlers
+- **External ID:** [lib/external-id.ts](lib/external-id.ts) — `getOrCreateExternalId()` returns the UUID from `bw_uid` cookie (creates on first visit, 365-day TTL). Read by [MetaPixel](components/MetaPixel.tsx) (raw → fbq init) and by [verify-payment route](app/api/razorpay/verify-payment/route.ts) (hashed → `user_data.external_id`)
 - **Client Razorpay modal:** [app/checkout/page.tsx:421-443](app/checkout/page.tsx#L421-L443)
 - **Metadata + metadataBase:** [app/layout.tsx:43-58](app/layout.tsx#L43-L58)
 - **GA4 / Clarity IDs (currently empty):** [app/layout.tsx:38-39](app/layout.tsx#L38-L39)
