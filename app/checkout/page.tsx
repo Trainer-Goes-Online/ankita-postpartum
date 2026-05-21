@@ -33,7 +33,6 @@ import { CHECKOUT_CONFIG } from '@/lib/checkout-config';
 import type { CouponResult, CouponSuccess } from '@/lib/coupons';
 import { readUtmCookie, readUtmFromUrl, writeUtmCookie } from '@/lib/utm';
 import { writeMam } from '@/lib/mam';
-import { trackPurchasePixel } from '@/lib/analytics';
 
 // ── Palette (isolated) ───────────────────────────────────────────────────────
 const C = {
@@ -568,19 +567,6 @@ function CheckoutGrid() {
         lastName: fields.lastName.trim(),
         city: fields.city.trim(),
         country: countryCode,
-      });
-      // Fire browser-side standard `Purchase` paired with the server CAPI
-      // Purchase event via matching eventID (= razorpay_payment_id). Meta
-      // dedupes them within 48h → counted as one Purchase. Without this
-      // pair, Meta's Auto Event Detection synthesises uncontrolled Purchase
-      // events with no eventID and inflates counts. trackPurchasePixel
-      // re-inits the pixel with MAM internally so this event lands at 9+/10
-      // EMQ on the browser side as well.
-      trackPurchasePixel({
-        paymentId: response.razorpay_payment_id,
-        value: result.amount ?? CHECKOUT_CONFIG.capi.value,
-        currency: result.currency ?? CHECKOUT_CONFIG.currency,
-        contentName: CHECKOUT_CONFIG.razorpayModal.description,
       });
       router.push(buildTYUrl({ amount: result.amount, currency: result.currency }));
     } catch (err) {
