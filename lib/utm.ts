@@ -33,6 +33,13 @@ const UTM_KEYS = [
 const COOKIE_NAME = CHECKOUT_CONFIG.utmSessionKey; // 'bodyworx_utm'
 const COOKIE_TTL_DAYS = 30;
 
+// Facebook click ID — arrives as a top-level `?fbclid=` URL param on Meta ad
+// clicks (separate from utm_*). Persisted to its own cookie so the
+// verify-payment route can forward it to the Pabbly/CRM payload as an
+// fbc-reconstruction backup. 90-day TTL covers Meta's longest click windows.
+const FBCLID_COOKIE = 'bw_fbclid';
+const FBCLID_TTL_DAYS = 90;
+
 function hasAnyUtm(utm: UtmData): boolean {
   return UTM_KEYS.some((k) => Boolean(utm[k]));
 }
@@ -141,4 +148,18 @@ export function syncUtmWithUrl(): void {
     window.location.hash;
 
   window.history.replaceState(window.history.state, '', newUrl);
+}
+
+/**
+ * Persist the `fbclid` URL param (Meta ad click ID) to the bw_fbclid cookie
+ * on first arrival. Read server-side by the verify-payment route and
+ * forwarded to the Pabbly/CRM payload. No-op if the param is absent so a
+ * later organic visit doesn't clobber an earlier ad-click value.
+ */
+export function captureFbclid(): void {
+  if (typeof window === 'undefined') return;
+  const fbclid = new URLSearchParams(window.location.search).get('fbclid');
+  if (!fbclid) return;
+  const maxAge = FBCLID_TTL_DAYS * 24 * 60 * 60;
+  document.cookie = `${FBCLID_COOKIE}=${encodeURIComponent(fbclid)}; Path=/; Max-Age=${maxAge}; SameSite=Lax`;
 }

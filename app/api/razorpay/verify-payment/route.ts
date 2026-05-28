@@ -308,6 +308,26 @@ export async function POST(req: NextRequest) {
     const paidAmountRupeesString = (paidAmountPaise / 100).toString();
     const paidAmountRupeesNumeric = paidAmountPaise / 100;
 
+    // ── Shared request-derived signals ───────────────────────────────────────
+    // Read once here so the Pabbly webhook payload can forward them to the
+    // downstream CRM Sheet. The Meta CAPI block below reuses these same
+    // variables — its event payload is unchanged (same values, same shape).
+    const fbc = req.cookies.get('_fbc')?.value;
+    const fbp = req.cookies.get('_fbp')?.value;
+    const fbclid = req.cookies.get('bw_fbclid')?.value;
+    const clientIp =
+      req.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
+      req.headers.get('x-real-ip') ??
+      undefined;
+    const clientUserAgent = req.headers.get('user-agent') ?? undefined;
+    const resolvedEventSourceUrl =
+      eventSourceUrl?.trim() || CHECKOUT_CONFIG.capi.fallbackEventSourceUrl;
+    // external_id for the CRM Sheet + downstream Apps Script events is the
+    // email hash — deterministic per person, matches the `em` field and the
+    // Apps Script's own hashing. (Distinct from the tripwire CAPI external_id,
+    // which uses the anonymous bw_uid cookie; both stitch via `em` on Meta.)
+    const externalIdEmailHash = hashEmail(customer.email) ?? '';
+
     // Payment verified — build Pabbly payload
     const now = new Date();
     const pabblyPayload = {
@@ -333,6 +353,19 @@ export async function POST(req: NextRequest) {
       utm_content:       utm?.content  ?? '',
       utm_term:          utm?.term     ?? '',
       utm_id:            utm?.id       ?? '',
+      // ── Downstream CRM / Meta CAPI enrichment (additive — nothing above
+      //    removed). Columns A–W of the Sheet schema in appscript/. ──
+      lead_id:           resolvedPaymentId,
+      created_at:        now.toISOString(),
+      fbc:               fbc ?? '',
+      fbp:               fbp ?? '',
+      client_ip_address: clientIp ?? '',
+      client_user_agent: clientUserAgent ?? '',
+      external_id:       externalIdEmailHash,
+      event_source_url:  resolvedEventSourceUrl,
+      is_test:           String(isFreeOrder),
+      purchase_event_id: resolvedPaymentId,
+      fbclid:            fbclid ?? '',
     };
 
     console.log('[verify-payment] Verified purchase:', pabblyPayload);
@@ -381,25 +414,13 @@ export async function POST(req: NextRequest) {
         `[verify-payment] Meta CAPI skipped — request host "${requestHost}" is not a production domain (allowed: ${CHECKOUT_CONFIG.capi.productionHosts.join(', ')})`,
       );
     } else if (metaPixelId && metaAccessToken) {
-      const fbc = req.cookies.get('_fbc')?.value;
-      const fbp = req.cookies.get('_fbp')?.value;
       // External ID — anonymous UUID written by lib/external-id.ts on first
       // browser visit. Present on every PageView and now on every CAPI event,
-      // letting Meta stitch the user's full journey to this purchase.
+      // letting Meta stitch the user's full journey to this purchase. (fbc,
+      // fbp, clientIp, clientUserAgent, resolvedEventSourceUrl are read once
+      // above and reused here — CAPI payload unchanged.)
       const externalId = req.cookies.get('bw_uid')?.value;
-      const clientIp =
-        req.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
-        req.headers.get('x-real-ip') ??
-        undefined;
-      const clientUserAgent = req.headers.get('user-agent') ?? undefined;
       const fullPhone = `${customer.dialCode}${customer.phone}`;
-
-      // Restricted-category accounts require event_source_url on every event
-      // or Meta drops them after the 60-day enforcement deadline. Prefer the
-      // client-sent URL (window.location.href at the moment of verify); fall
-      // back to the production checkout URL when missing.
-      const resolvedEventSourceUrl =
-        eventSourceUrl?.trim() || CHECKOUT_CONFIG.capi.fallbackEventSourceUrl;
 
       // Read the bodyworx_utm cookie (written by <UtmCapture/> on every page
       // mount). Decoded shape: { source, medium, campaign, content, term, id }.

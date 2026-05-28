@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { usePathname } from 'next/navigation';
-import { syncUtmWithUrl } from '@/lib/utm';
+import { syncUtmWithUrl, captureFbclid } from '@/lib/utm';
 
 /**
  * Mounted once in app/layout.tsx so it fires on every page in the app.
@@ -19,6 +19,7 @@ export default function UtmCapture() {
 
   useEffect(() => {
     syncUtmWithUrl();
+    captureFbclid();
   }, [pathname]);
 
   return null;
