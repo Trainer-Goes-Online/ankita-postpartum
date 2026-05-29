@@ -9,8 +9,9 @@
  */
 
 import Link from 'next/link';
+import Script from 'next/script';
 import { useRouter } from 'next/navigation';
-import { motion, type Variants } from 'framer-motion';
+import { LazyMotion, domAnimation, m, type Variants } from 'framer-motion';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { isValidPhoneNumber } from 'libphonenumber-js';
 import {
@@ -175,11 +176,21 @@ function validateFields(fields: FormFields, countryCode: string): FormErrors {
 // ── Page ─────────────────────────────────────────────────────────────────────
 export default function NewCheckoutPage() {
   return (
+    <LazyMotion features={domAnimation}>
     <main style={{ background: C.cream, color: C.ink }} className="min-h-screen overflow-x-hidden font-body">
+      {/* Razorpay checkout script — loaded here (only page that opens the modal)
+          rather than site-wide, so the landing page isn't burdened with the
+          Razorpay SDK's chunk cascade. afterInteractive guarantees the modal
+          is ready well before the user completes the form. */}
+      <Script
+        src="https://checkout.razorpay.com/v1/checkout.js"
+        strategy="afterInteractive"
+      />
       <MinimalHeader />
       <CheckoutBody />
       {/* Global footer renders from app/layout.tsx */}
     </main>
+    </LazyMotion>
   );
 }
 
@@ -234,35 +245,35 @@ function CheckoutBody() {
     <section className="py-8 md:py-14">
       <div className="mx-auto max-w-6xl px-4 sm:px-5 md:px-8">
         {/* Heading */}
-        <motion.div
+        <m.div
           variants={stagger}
           initial="hidden"
           animate="show"
           className="mb-8 text-center sm:mb-10 md:mb-12"
         >
-          <motion.span
+          <m.span
             variants={fadeUp}
             className="inline-flex max-w-full items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] sm:gap-2 sm:px-3.5 sm:text-[11px] sm:tracking-[0.18em]"
             style={{ background: C.blush, color: C.deep }}
           >
             <Sparkle weight="fill" className="h-3 w-3 shrink-0" />
             <span className="truncate sm:overflow-visible sm:whitespace-normal">5-Day Postpartum Recovery Challenge</span>
-          </motion.span>
-          <motion.h1
+          </m.span>
+          <m.h1
             variants={fadeUp}
             className="mt-4 font-heading text-[22px] font-extrabold leading-tight sm:text-[28px] md:text-[36px]"
             style={{ color: C.ink }}
           >
             Add Your Payment Details.
-          </motion.h1>
-          <motion.p
+          </m.h1>
+          <m.p
             variants={fadeUp}
             className="mt-2 text-[13.5px] sm:text-[14.5px]"
             style={{ color: C.inkMuted }}
           >
             One step away from your live recovery reset.
-          </motion.p>
-        </motion.div>
+          </m.p>
+        </m.div>
 
         {/* 2-column grid */}
         <CheckoutGrid />
@@ -601,7 +612,7 @@ function CheckoutGrid() {
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.35fr_1fr] lg:gap-10">
         {/* LEFT: form (renders below summary on mobile) */}
-        <motion.div
+        <m.div
           variants={fadeUp}
           initial="hidden"
           animate="show"
@@ -768,10 +779,10 @@ function CheckoutGrid() {
             {/* Payment method strip */}
             <PaymentMethods />
           </form>
-        </motion.div>
+        </m.div>
 
         {/* RIGHT: sticky summary */}
-        <motion.aside
+        <m.aside
           variants={fadeUp}
           initial="hidden"
           animate="show"
@@ -780,7 +791,7 @@ function CheckoutGrid() {
           style={{ background: 'white', border: `1px solid ${C.line}`, boxShadow: '0 30px 80px -40px rgba(199,58,87,0.25)' }}
         >
           <OrderSummary finalRupees={finalRupees} appliedCoupon={appliedCoupon} />
-        </motion.aside>
+        </m.aside>
       </div>
     </>
   );
