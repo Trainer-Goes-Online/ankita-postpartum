@@ -132,6 +132,50 @@
   transform-origin: center center;
 }
 
+/* ──────────────────────────────────────────────────────────────────────
+ *  Landing scroll-reveal (motion-lite) — replaces framer-motion's whileInView
+ *  reveals with pure CSS driven by one IntersectionObserver. Hidden states are
+ *  gated behind `.bw-js` (set before paint by an inline script in layout.tsx)
+ *  so users without JS — and crawlers — always see fully-rendered content.
+ * ─────────────────────────────────────────────────────────────────── */
+.bw-js .bw-reveal-up,
+.bw-js .bw-reveal-up-sm,
+.bw-js .bw-reveal-left,
+.bw-js .bw-reveal-right,
+.bw-js .bw-reveal-scale,
+.bw-js .bw-reveal-fade { opacity: 0; }
+.bw-js .bw-reveal-up    { transform: translate3d(0, 24px, 0); }
+.bw-js .bw-reveal-up-sm { transform: translate3d(0, 14px, 0); }
+.bw-js .bw-reveal-left  { transform: translate3d(32px, 0, 0); }
+.bw-js .bw-reveal-right { transform: translate3d(-32px, 0, 0); }
+.bw-js .bw-reveal-scale { transform: scale(0.96); }
+
+.bw-reveal {
+  transition: opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+.bw-reveal.bw-in { opacity: 1 !important; transform: none !important; }
+
+/* Continuous marquees (below-fold testimonial + transformation rows). Two
+ * copies of the track make -50% land seamlessly, matching the framer version. */
+@keyframes bw-marq-left  { from { transform: translate3d(0, 0, 0); }    to { transform: translate3d(-50%, 0, 0); } }
+@keyframes bw-marq-right { from { transform: translate3d(-50%, 0, 0); } to { transform: translate3d(0, 0, 0); } }
+.bw-marq {
+  animation: var(--bw-marq-name, bw-marq-left) var(--bw-marq-dur, 30s) linear infinite;
+  will-change: transform;
+}
+.bw-marq-left  { --bw-marq-name: bw-marq-left; }
+.bw-marq-right { --bw-marq-name: bw-marq-right; }
+
+/* Hover micro-interactions (defined after .bw-in so :hover wins on revealed els) */
+.bw-hover-scale   { transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1); }
+.bw-hover-scale:hover   { transform: scale(1.02); }
+.bw-hover-lift    { transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1); }
+.bw-hover-lift:hover    { transform: translateY(-4px) !important; }
+.bw-hover-lift-sm { transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1); }
+.bw-hover-lift-sm:hover { transform: translateY(-3px) !important; }
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -141,8 +185,16 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
-  .bw-marquee-track {
+  .bw-marquee-track,
+  .bw-marq {
     animation: none !important;
     transform: none !important;
   }
+  /* Never leave reveal content hidden when motion is reduced. */
+  .bw-js .bw-reveal-up,
+  .bw-js .bw-reveal-up-sm,
+  .bw-js .bw-reveal-left,
+  .bw-js .bw-reveal-right,
+  .bw-js .bw-reveal-scale,
+  .bw-js .bw-reveal-fade { opacity: 1; transform: none; }
 }

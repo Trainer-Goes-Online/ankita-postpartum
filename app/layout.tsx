@@ -14,11 +14,16 @@ const heading = Plus_Jakarta_Sans({
   display: 'swap',
 });
 
+// preload:false keeps these fonts available (loaded on-demand via their
+// @font-face, still display:swap) but removes them from the critical preload
+// list so they don't compete with the hero LCP image for early bandwidth.
+// Only the heading font (used by the above-the-fold <h1>) stays preloaded.
 const body = Poppins({
   subsets: ['latin'],
   weight: ['300', '400', '500', '600', '700'],
   variable: '--font-body',
   display: 'swap',
+  preload: false,
 });
 
 // Editorial serif — used for high-impact display headlines (Hero, FinalCTA).
@@ -29,6 +34,7 @@ const editorial = Fraunces({
   style: ['normal', 'italic'],
   variable: '--font-editorial',
   display: 'swap',
+  preload: false,
 });
 
 // ── Tracking IDs ─────────────────────────────────────────────────────────────
@@ -67,6 +73,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${heading.variable} ${body.variable} ${editorial.variable}`}>
       <body className="bodyworx-root font-body bg-white text-ink antialiased">
+        {/* Marks the document as JS-capable BEFORE first paint so CSS scroll
+            reveals (.bw-js .bw-reveal-*) only hide content when JS can reveal
+            it — no-JS users and crawlers always see fully-rendered content, and
+            there's no reveal flash. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: "document.documentElement.classList.add('bw-js')",
+          }}
+        />
         {/* Meta Pixel — loads once, fires PageView on every route change.
             Gated by NEXT_PUBLIC_META_PIXEL_ID (renders nothing if unset). */}
         <MetaPixel />
@@ -122,11 +137,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </div>
         </footer>
 
-        {/* Razorpay checkout script — always loaded for the modal to be available */}
-        <Script
-          src="https://checkout.razorpay.com/v1/checkout.js"
-          strategy="lazyOnload"
-        />
+        {/* Razorpay checkout script is loaded on /checkout only (the sole page
+            that opens the modal) — see app/checkout/page.tsx. Keeping it off the
+            site-wide layout spares the landing page the Razorpay chunk cascade. */}
 
         {/* ── GA4 — renders only when ID is filled in ── */}
         {GA4_MEASUREMENT_ID && (

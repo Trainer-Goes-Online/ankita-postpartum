@@ -9,7 +9,7 @@
  * real chat invite once the human provides it.
  */
 
-import { motion, type Variants } from 'framer-motion';
+import { LazyMotion, domAnimation, m, type Variants } from 'framer-motion';
 import { CHECKOUT_CONFIG } from '@/lib/checkout-config';
 import {
   CheckCircle,
@@ -73,6 +73,7 @@ const WHATSAPP_INVITE = CHECKOUT_CONFIG.whatsappInviteUrl;
 // ── Page ─────────────────────────────────────────────────────────────────────
 export default function Page() {
   return (
+    <LazyMotion features={domAnimation}>
     <main style={{ background: C.cream, color: C.ink }} className="min-h-screen overflow-x-hidden font-body">
       <MinimalHeader />
       <Hero />
@@ -85,6 +86,7 @@ export default function Page() {
       {/* Global footer renders from app/layout.tsx */}
       <MobileStickyCTA />
     </main>
+    </LazyMotion>
   );
 }
 
@@ -121,30 +123,30 @@ function Hero() {
       </div>
 
       <div className="mx-auto max-w-3xl px-5 text-center md:px-8">
-        <motion.div variants={stagger} initial="hidden" animate="show">
-          <motion.div variants={scaleIn} className="mx-auto grid h-20 w-20 place-items-center rounded-full"
+        <m.div variants={stagger} initial="hidden" animate="show">
+          <m.div variants={scaleIn} className="mx-auto grid h-20 w-20 place-items-center rounded-full"
             style={{ background: 'white', border: `1px solid ${C.line}`, boxShadow: '0 18px 50px -16px rgba(199,58,87,0.35)' }}>
             <Confetti weight="duotone" className="h-10 w-10" style={{ color: C.brand }} />
-          </motion.div>
+          </m.div>
 
-          <motion.span
+          <m.span
             variants={fadeUpSm}
             className="mt-6 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.2em]"
             style={{ background: '#ECFDF5', color: C.goodGreen, border: '1px solid #A7F3D0' }}
           >
             <Check weight="bold" className="h-3 w-3" />
             Congrats!
-          </motion.span>
+          </m.span>
 
-          <motion.h1
+          <m.h1
             variants={fadeUp}
             className="mt-5 font-heading text-[30px] font-extrabold leading-[1.05] tracking-tight sm:text-[44px] lg:text-[52px]"
             style={{ color: C.ink }}
           >
             Your 5-Day Postpartum Reset is{' '}
             <span style={{ color: C.brand }}>Confirmed.</span>
-          </motion.h1>
-          <motion.p
+          </m.h1>
+          <m.p
             variants={fadeUp}
             className="mt-4 text-[15px] leading-relaxed sm:text-[17px]"
             style={{ color: C.inkSoft }}
@@ -152,10 +154,10 @@ function Hero() {
             You are officially enrolled in the 5-Day{' '}
             <strong style={{ color: C.ink }}>BodyWorx Postpartum Recovery Challenge.</strong> Please read this page
             carefully — your access depends on the next step.
-          </motion.p>
+          </m.p>
 
           {/* Confirmed details */}
-          <motion.div
+          <m.div
             variants={fadeUp}
             className="mx-auto mt-8 grid w-full max-w-xl grid-cols-1 gap-3 sm:grid-cols-2"
           >
@@ -170,8 +172,8 @@ function Hero() {
               value={CHECKOUT_CONFIG.webinarTimes}
               footnote="Choose the batch that fits"
             />
-          </motion.div>
-        </motion.div>
+          </m.div>
+        </m.div>
       </div>
     </section>
   );
@@ -219,7 +221,7 @@ function DetailCard({
 function CommunityCTA() {
   return (
     <section className="px-5 pb-4 md:px-8">
-      <motion.div
+      <m.div
         variants={scaleIn}
         initial="hidden"
         whileInView="show"
@@ -264,7 +266,7 @@ function CommunityCTA() {
 
           <p className="mt-4 text-[11.5px] text-white/80">Opens in WhatsApp · 1-click join</p>
         </div>
-      </motion.div>
+      </m.div>
     </section>
   );
 }
@@ -282,16 +284,16 @@ function InsideTheCommunity() {
   return (
     <section className="px-5 py-16 md:px-8 md:py-20">
       <div className="mx-auto max-w-3xl">
-        <motion.div variants={stagger} initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.3 }} className="text-center">
-          <motion.div variants={fadeUpSm}>
+        <m.div variants={stagger} initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.3 }} className="text-center">
+          <m.div variants={fadeUpSm}>
             <SectionEyebrow text="What you'll receive inside" />
-          </motion.div>
-          <motion.h2 variants={fadeUp} className="mt-3 font-heading text-[24px] font-extrabold leading-tight sm:text-[32px]" style={{ color: C.ink }}>
+          </m.div>
+          <m.h2 variants={fadeUp} className="mt-3 font-heading text-[24px] font-extrabold leading-tight sm:text-[32px]" style={{ color: C.ink }}>
             What you&apos;ll receive in the <span style={{ color: C.brand }}>community.</span>
-          </motion.h2>
-        </motion.div>
+          </m.h2>
+        </m.div>
 
-        <motion.ul
+        <m.ul
           variants={stagger}
           initial="hidden"
           whileInView="show"
@@ -299,7 +301,7 @@ function InsideTheCommunity() {
           className="mt-10 space-y-3"
         >
           {COMMUNITY_BENEFITS.map(({ icon: Icon, text }) => (
-            <motion.li
+            <m.li
               key={text}
               variants={fadeUpSm}
               className="flex items-center gap-4 rounded-2xl p-4"
@@ -312,11 +314,11 @@ function InsideTheCommunity() {
                 {text}
               </span>
               <CheckCircle weight="fill" className="ml-auto h-5 w-5 shrink-0" style={{ color: C.goodGreen }} />
-            </motion.li>
+            </m.li>
           ))}
-        </motion.ul>
+        </m.ul>
 
-        <motion.p
+        <m.p
           variants={fadeUp}
           initial="hidden"
           whileInView="show"
@@ -326,7 +328,7 @@ function InsideTheCommunity() {
         >
           <Warning weight="fill" className="mr-1.5 inline-block h-4 w-4 align-text-bottom" />
           Please do <strong>not mute</strong> or <strong>exit the community</strong> during these <strong>5 days</strong>.
-        </motion.p>
+        </m.p>
       </div>
     </section>
   );
@@ -336,7 +338,7 @@ function InsideTheCommunity() {
 function BeforeCall() {
   return (
     <section className="px-5 pb-4 md:px-8">
-      <motion.div
+      <m.div
         variants={fadeUp}
         initial="hidden"
         whileInView="show"
@@ -358,7 +360,7 @@ function BeforeCall() {
             </p>
           </div>
         </div>
-      </motion.div>
+      </m.div>
     </section>
   );
 }
@@ -374,19 +376,19 @@ function ImportantPolicy() {
   return (
     <section className="px-5 py-16 md:px-8 md:py-20">
       <div className="mx-auto max-w-3xl">
-        <motion.div variants={stagger} initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.3 }} className="text-center">
-          <motion.div variants={fadeUpSm}>
+        <m.div variants={stagger} initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.3 }} className="text-center">
+          <m.div variants={fadeUpSm}>
             <SectionEyebrow text="Please note" />
-          </motion.div>
-          <motion.h2 variants={fadeUp} className="mt-3 font-heading text-[24px] font-extrabold leading-tight sm:text-[32px]" style={{ color: C.ink }}>
+          </m.div>
+          <m.h2 variants={fadeUp} className="mt-3 font-heading text-[24px] font-extrabold leading-tight sm:text-[32px]" style={{ color: C.ink }}>
             Important <span style={{ color: C.brand }}>policy.</span>
-          </motion.h2>
-          <motion.p variants={fadeUp} className="mt-3 text-[14.5px]" style={{ color: C.inkSoft }}>
+          </m.h2>
+          <m.p variants={fadeUp} className="mt-3 text-[14.5px]" style={{ color: C.inkSoft }}>
             Because this is a live, structured recovery experience:
-          </motion.p>
-        </motion.div>
+          </m.p>
+        </m.div>
 
-        <motion.ul
+        <m.ul
           variants={stagger}
           initial="hidden"
           whileInView="show"
@@ -394,7 +396,7 @@ function ImportantPolicy() {
           className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-3"
         >
           {POLICY_ITEMS.map((item) => (
-            <motion.li
+            <m.li
               key={item}
               variants={fadeUpSm}
               className="flex items-start gap-3 rounded-2xl p-5 text-center"
@@ -404,11 +406,11 @@ function ImportantPolicy() {
               <span className="text-[13.5px] font-semibold leading-snug" style={{ color: C.inkSoft }}>
                 {item}
               </span>
-            </motion.li>
+            </m.li>
           ))}
-        </motion.ul>
+        </m.ul>
 
-        <motion.div
+        <m.div
           variants={fadeUp}
           initial="hidden"
           whileInView="show"
@@ -422,7 +424,7 @@ function ImportantPolicy() {
           <p className="mt-1.5 text-[12.5px]" style={{ color: C.inkMuted }}>
             (Refund policy applies only after completing the full 5-day challenge as instructed.)
           </p>
-        </motion.div>
+        </m.div>
       </div>
     </section>
   );
@@ -440,19 +442,19 @@ function PrepChecklist() {
   return (
     <section className="px-5 pb-16 md:px-8 md:pb-20">
       <div className="mx-auto max-w-3xl">
-        <motion.div variants={stagger} initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.3 }} className="text-center">
-          <motion.div variants={fadeUpSm}>
+        <m.div variants={stagger} initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.3 }} className="text-center">
+          <m.div variants={fadeUpSm}>
             <SectionEyebrow text="Quick prep" />
-          </motion.div>
-          <motion.h2 variants={fadeUp} className="mt-3 font-heading text-[24px] font-extrabold leading-tight sm:text-[32px]" style={{ color: C.ink }}>
+          </m.div>
+          <m.h2 variants={fadeUp} className="mt-3 font-heading text-[24px] font-extrabold leading-tight sm:text-[32px]" style={{ color: C.ink }}>
             What to do <span style={{ color: C.brand }}>before the call.</span>
-          </motion.h2>
-          <motion.p variants={fadeUp} className="mt-3 text-[14.5px]" style={{ color: C.inkSoft }}>
+          </m.h2>
+          <m.p variants={fadeUp} className="mt-3 text-[14.5px]" style={{ color: C.inkSoft }}>
             To get maximum results, please:
-          </motion.p>
-        </motion.div>
+          </m.p>
+        </m.div>
 
-        <motion.ul
+        <m.ul
           variants={stagger}
           initial="hidden"
           whileInView="show"
@@ -460,7 +462,7 @@ function PrepChecklist() {
           className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2"
         >
           {PREP_ITEMS.map((item, i) => (
-            <motion.li
+            <m.li
               key={item}
               variants={fadeUpSm}
               className="flex items-start gap-3 rounded-2xl p-4"
@@ -475,11 +477,11 @@ function PrepChecklist() {
               <span className="text-[14px] font-medium leading-snug" style={{ color: C.inkSoft }}>
                 {item}
               </span>
-            </motion.li>
+            </m.li>
           ))}
-        </motion.ul>
+        </m.ul>
 
-        <motion.p
+        <m.p
           variants={fadeUp}
           initial="hidden"
           whileInView="show"
@@ -489,7 +491,7 @@ function PrepChecklist() {
         >
           <ShieldCheck weight="fill" className="mr-1.5 inline-block h-4 w-4 align-text-bottom" style={{ color: C.brand }} />
           <strong style={{ color: C.ink }}>No equipment required.</strong> No prior fitness level required.
-        </motion.p>
+        </m.p>
       </div>
     </section>
   );
@@ -505,16 +507,16 @@ function FinalNudge() {
         style={{ background: `radial-gradient(ellipse at top, ${C.brand} 0%, transparent 60%)` }}
       />
       <div className="mx-auto max-w-3xl text-center">
-        <motion.div variants={stagger} initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.4 }}>
-          <motion.h2 variants={fadeUp} className="font-heading text-[26px] font-extrabold leading-tight text-white sm:text-[36px]">
+        <m.div variants={stagger} initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.4 }}>
+          <m.h2 variants={fadeUp} className="font-heading text-[26px] font-extrabold leading-tight text-white sm:text-[36px]">
             This is your <span style={{ color: C.bright }}>first step</span><br className="hidden sm:block" />{' '}
             toward structured, safe postpartum recovery.
-          </motion.h2>
-          <motion.p variants={fadeUp} className="mt-4 text-[14.5px] text-white/75">
+          </m.h2>
+          <m.p variants={fadeUp} className="mt-4 text-[14.5px] text-white/75">
             Now, join the community and we&apos;ll see you inside.
-          </motion.p>
+          </m.p>
 
-          <motion.div variants={fadeUp} className="mt-8">
+          <m.div variants={fadeUp} className="mt-8">
             <a
               href={WHATSAPP_INVITE}
               target="_blank"
@@ -526,8 +528,8 @@ function FinalNudge() {
               Join the Community
               <ArrowRight weight="bold" className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
             </a>
-          </motion.div>
-        </motion.div>
+          </m.div>
+        </m.div>
       </div>
     </section>
   );
