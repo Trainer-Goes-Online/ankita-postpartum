@@ -6,7 +6,7 @@
  *     NEXT_PUBLIC_OFFER_PRICE_RUPEES=497         # what the user pays
  *     NEXT_PUBLIC_OFFER_LIST_PRICE_RUPEES=1660   # strikethrough "was" price
  *     NEXT_PUBLIC_WEBINAR_DATE=25th May          # batch start date
- *     NEXT_PUBLIC_WEBINAR_TIMES=6 AM, 10 AM, 4 PM & 7 PM IST
+ *     NEXT_PUBLIC_WEBINAR_TIMES=6 AM, 4 PM & 7 PM IST
  *     NEXT_PUBLIC_WHATSAPP_INVITE_URL=https://chat.whatsapp.com/...
  */
 
@@ -23,7 +23,7 @@ const LIST_PRICE_RUPEES = parsePriceEnv(
 );
 const WEBINAR_DATE = process.env.NEXT_PUBLIC_WEBINAR_DATE?.trim() || '25th May';
 const WEBINAR_TIMES =
-  process.env.NEXT_PUBLIC_WEBINAR_TIMES?.trim() || '6 AM, 10 AM, 4 PM & 7 PM IST';
+  process.env.NEXT_PUBLIC_WEBINAR_TIMES?.trim() || '6 AM, 4 PM & 7 PM IST';
 const WHATSAPP_INVITE_URL =
   process.env.NEXT_PUBLIC_WHATSAPP_INVITE_URL?.trim() ||
   'https://chat.whatsapp.com/K7EEYdn7tbuFkPcDuk0ZLv';
