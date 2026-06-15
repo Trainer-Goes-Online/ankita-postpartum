@@ -650,17 +650,17 @@ function Testimonials() {
         >
           {track.map((v, i) => (
             <VideoTile
-              key={`${v.vimeoId}-${i}`}
+              key={`${v.videoUrl}-${i}`}
               poster={v.poster}
               index={(i % VIDEO_TESTIMONIALS.length) + 1}
               eager={armed}
-              onClick={() => setOpenId(v.vimeoId)}
+              onClick={() => setOpenId(v.videoUrl)}
             />
           ))}
         </m.div>
       </div>
 
-      <VideoLightbox vimeoId={openId} onClose={() => setOpenId(null)} />
+      <VideoLightbox videoUrl={openId} onClose={() => setOpenId(null)} />
     </section>
   );
 }

@@ -1,55 +1,62 @@
 /**
  * Testimonial assets.
  *
- * All images live under `/public/testimonials/…` (downloaded locally from
- * the legacy WordPress site so this project does not break when WP is taken
- * down).
+ * All poster images live under `/public/testimonials/…` (downloaded locally
+ * from the legacy WordPress site so this project does not break when WP is
+ * taken down). The actual video files now live on our DigitalOcean Spaces
+ * CDN — we migrated off Vimeo when their plan capped us.
  *
- * - `VIDEO_TESTIMONIALS`: 6 mum testimonial videos, each with a poster
- *   thumbnail and the Vimeo URL.
- * - `WHATSAPP_TESTIMONIALS`: 34 chat screenshots for the "real-messages"
- *   social-proof grid.
+ * - `VIDEO_TESTIMONIALS`: 6 mum testimonial videos, each with a local poster
+ *   thumbnail and a direct MP4 URL on the CDN.
+ * - `WHATSAPP_TESTIMONIALS` (below): 34 chat screenshots for the
+ *   "real-messages" social-proof grid.
  */
 
 export type VideoTestimonial = {
+  /** Person's first name — used as the React key + accessibility label. */
+  name: string;
   /** Local poster image path (in /public). */
   poster: string;
-  /** Public Vimeo watch URL — opens in a new tab / lightbox. */
-  vimeoUrl: string;
-  /** Numeric Vimeo ID, used to embed the player inside a lightbox. */
-  vimeoId: string;
+  /** Direct MP4 URL on our CDN. Played via HTML5 <video> in the lightbox. */
+  videoUrl: string;
 };
 
 export const VIDEO_TESTIMONIALS: VideoTestimonial[] = [
   {
+    name: 'Dr. Milli',
     poster: '/testimonials/videos/video-1.png',
-    vimeoUrl: 'https://vimeo.com/1159597604',
-    vimeoId: '1159597604',
+    videoUrl:
+      'https://tgox-production-bucket.nyc3.cdn.digitaloceanspaces.com/client_funnel_videos/Ankita/dr_milli%20(540p).mp4',
   },
   {
+    name: 'Lovely',
     poster: '/testimonials/videos/video-2.png',
-    vimeoUrl: 'https://vimeo.com/1159597795',
-    vimeoId: '1159597795',
+    videoUrl:
+      'https://tgox-production-bucket.nyc3.cdn.digitaloceanspaces.com/client_funnel_videos/Ankita/lovely%20(540p).mp4',
   },
   {
+    name: 'Meera',
     poster: '/testimonials/videos/video-3.png',
-    vimeoUrl: 'https://vimeo.com/1159597829',
-    vimeoId: '1159597829',
+    videoUrl:
+      'https://tgox-production-bucket.nyc3.cdn.digitaloceanspaces.com/client_funnel_videos/Ankita/meera%20(540p).mp4',
   },
   {
+    name: 'Megha',
     poster: '/testimonials/videos/video-4.png',
-    vimeoUrl: 'https://vimeo.com/1159597641',
-    vimeoId: '1159597641',
+    videoUrl:
+      'https://tgox-production-bucket.nyc3.cdn.digitaloceanspaces.com/client_funnel_videos/Ankita/megha%20(540p).mp4',
   },
   {
+    name: 'Priyanka',
     poster: '/testimonials/videos/video-5.png',
-    vimeoUrl: 'https://vimeo.com/1159597665',
-    vimeoId: '1159597665',
+    videoUrl:
+      'https://tgox-production-bucket.nyc3.cdn.digitaloceanspaces.com/client_funnel_videos/Ankita/priyanka%20(540p).mp4',
   },
   {
+    name: 'Vaishnavi',
     poster: '/testimonials/videos/video-6.png',
-    vimeoUrl: 'https://vimeo.com/1159597702',
-    vimeoId: '1159597702',
+    videoUrl:
+      'https://tgox-production-bucket.nyc3.cdn.digitaloceanspaces.com/client_funnel_videos/Ankita/vaishnavi%20(540p).mp4',
   },
 ];
 

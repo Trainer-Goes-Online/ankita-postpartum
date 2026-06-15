@@ -4,23 +4,27 @@ import { useEffect } from 'react';
 import { X } from '@phosphor-icons/react/dist/ssr';
 
 type VideoLightboxProps = {
-  /** Vimeo numeric ID. When set, the modal is open. `null` = closed. */
-  vimeoId: string | null;
+  /** Direct MP4 URL. When set, the modal is open. `null` = closed. */
+  videoUrl: string | null;
   onClose: () => void;
 };
 
 /**
- * Full-screen Vimeo lightbox.
+ * Full-screen video lightbox.
  *
- * - Renders a fixed overlay above the page when `vimeoId` is set.
- * - Embeds the Vimeo player at 100% width inside a 16:9 frame.
+ * - Renders a fixed overlay above the page when `videoUrl` is set.
+ * - Plays the MP4 via HTML5 <video> at 100% width inside a 16:9 frame.
  * - Closes on ESC, on overlay-click, or via the X button.
  * - Locks body scroll while open.
+ *
+ * The lightbox opens in response to a user click, so autoplay-with-audio is
+ * permitted by every modern browser. We deliberately do not set `muted` so
+ * the testimonial speaks the moment it appears.
  */
-export default function VideoLightbox({ vimeoId, onClose }: VideoLightboxProps) {
+export default function VideoLightbox({ videoUrl, onClose }: VideoLightboxProps) {
   // ESC to close + lock body scroll while open.
   useEffect(() => {
-    if (!vimeoId) return;
+    if (!videoUrl) return;
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const onKey = (e: KeyboardEvent) => {
@@ -31,12 +35,9 @@ export default function VideoLightbox({ vimeoId, onClose }: VideoLightboxProps) 
       document.body.style.overflow = prevOverflow;
       window.removeEventListener('keydown', onKey);
     };
-  }, [vimeoId, onClose]);
+  }, [videoUrl, onClose]);
 
-  if (!vimeoId) return null;
-
-  // dnt=1 → no Vimeo cookies; autoplay=1 → start immediately on open.
-  const embedSrc = `https://player.vimeo.com/video/${vimeoId}?autoplay=1&dnt=1&title=0&byline=0&portrait=0`;
+  if (!videoUrl) return null;
 
   return (
     <div
@@ -61,12 +62,17 @@ export default function VideoLightbox({ vimeoId, onClose }: VideoLightboxProps) 
           <X weight="bold" className="h-5 w-5" />
         </button>
         <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-black shadow-2xl">
-          <iframe
-            src={embedSrc}
-            title="Video testimonial"
-            allow="autoplay; fullscreen; picture-in-picture"
-            allowFullScreen
-            className="absolute inset-0 h-full w-full"
+          {/* key=videoUrl forces React to remount when the URL changes, so
+              the player resets cleanly between testimonials instead of
+              continuing the previous one. */}
+          <video
+            key={videoUrl}
+            src={videoUrl}
+            controls
+            autoPlay
+            playsInline
+            preload="auto"
+            className="absolute inset-0 h-full w-full object-contain"
           />
         </div>
       </div>
