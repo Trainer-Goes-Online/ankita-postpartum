@@ -28,6 +28,7 @@ import {
   Heart,
   ArrowRight,
 } from '@phosphor-icons/react/dist/ssr';
+import WhatsAppCTA from '@/components/WhatsAppCTA';
 
 // ── Palette (isolated) ───────────────────────────────────────────────────────
 const C = {
@@ -252,17 +253,15 @@ function CommunityCTA() {
             <strong className="text-white">Your access to the challenge depends on joining this group.</strong>
           </p>
 
-          <a
+          <WhatsAppCTA
             href={WHATSAPP_INVITE}
-            target="_blank"
-            rel="noopener noreferrer"
             className="group mt-7 inline-flex w-full min-h-[56px] items-center justify-center gap-2 rounded-full bg-white px-7 py-4 font-heading text-[15px] font-bold shadow-xl transition-transform duration-200 hover:-translate-y-0.5 sm:w-auto sm:text-[16px]"
             style={{ color: C.whatsappDeep }}
           >
             <WhatsappLogo weight="fill" className="h-5 w-5" />
             Join the Community Here
             <ArrowRight weight="bold" className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
-          </a>
+          </WhatsAppCTA>
 
           <p className="mt-4 text-[11.5px] text-white/80">Opens in WhatsApp · 1-click join</p>
         </div>
@@ -517,17 +516,15 @@ function FinalNudge() {
           </m.p>
 
           <m.div variants={fadeUp} className="mt-8">
-            <a
+            <WhatsAppCTA
               href={WHATSAPP_INVITE}
-              target="_blank"
-              rel="noopener noreferrer"
               className="group inline-flex w-full min-h-[56px] items-center justify-center gap-2 rounded-full bg-white px-7 py-4 font-heading text-[15px] font-bold shadow-2xl transition-transform duration-200 hover:-translate-y-0.5 sm:w-auto sm:text-[16px]"
               style={{ color: C.whatsappDeep }}
             >
               <WhatsappLogo weight="fill" className="h-5 w-5" />
               Join the Community
               <ArrowRight weight="bold" className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
-            </a>
+            </WhatsAppCTA>
           </m.div>
         </m.div>
       </div>
@@ -578,17 +575,15 @@ function MobileStickyCTA() {
         className="border-t px-4 pt-3 pb-3 shadow-[0_-8px_24px_-12px_rgba(199,58,87,0.25)] backdrop-blur"
         style={{ background: 'rgba(255,255,255,0.95)', borderColor: C.line }}
       >
-        <a
+        <WhatsAppCTA
           href={WHATSAPP_INVITE}
-          target="_blank"
-          rel="noopener noreferrer"
           className="inline-flex w-full min-h-[52px] items-center justify-center gap-2 rounded-2xl py-3.5 font-heading text-[14.5px] font-bold text-white shadow-md"
           style={{ background: `linear-gradient(135deg, ${C.whatsappDeep}, ${C.whatsapp})` }}
         >
           <WhatsappLogo weight="fill" className="h-5 w-5" />
           Join the WhatsApp Community
           <ArrowRight weight="bold" className="h-4 w-4" />
-        </a>
+        </WhatsAppCTA>
       </div>
     </div>
   );

@@ -4,7 +4,7 @@
  * /checkout — 2-column checkout for the 5-Day Postpartum Recovery
  * Challenge funnel. Self-contained (no navbar, inline palette), routes
  * success → /thank-you. Reuses the production-tested Razorpay endpoints
- * (/api/razorpay/create-order + /api/razorpay/verify-payment) and the
+ * (/api/razorpay/create-order + /api/razorpay/webhook) and the
  * tgotest2025 coupon (100% off via HMAC-signed free-order token).
  */
 
@@ -34,6 +34,7 @@ import { CHECKOUT_CONFIG } from '@/lib/checkout-config';
 import type { CouponResult, CouponSuccess } from '@/lib/coupons';
 import { readUtmCookie, readUtmFromUrl, writeUtmCookie } from '@/lib/utm';
 import { writeMam } from '@/lib/mam';
+import { trackGa4EventOnce } from '@/lib/ga4';
 
 // ── Palette (isolated) ───────────────────────────────────────────────────────
 const C = {
@@ -409,6 +410,10 @@ function CheckoutGrid() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    // GA4 `initiate_checkout` — v2.0 semantics: fires on the FIRST Pay
+    // click, BEFORE validation. Captures Pay-button intent (including
+    // half-filled bounces). Deduped once per browser via bw_ga4_ic_fired.
+    trackGa4EventOnce('initiate_checkout');
     setTouched({ firstName: true, lastName: true, email: true, city: true, phone: true });
     const allErrors = validateFields(fields, countryCode);
     setErrors(allErrors);
@@ -420,10 +425,33 @@ function CheckoutGrid() {
 
     setLoading(true);
     try {
+      // Send the enriched body so create-order can pack the customer +
+      // attribution data into Razorpay notes → webhook reads it back after
+      // payment.captured (bypasses the UPI-away browser-return dependency).
+      const utmForOrder = readUtmCookie();
+      const fbclidForOrder =
+        typeof document !== 'undefined'
+          ? (document.cookie.match(/(?:^|;\s*)bw_fbclid=([^;]*)/)?.[1] ?? '')
+          : '';
+      const selectedCountryForOrder =
+        COUNTRIES.find((c) => c.code === countryCode) ?? COUNTRIES[0];
       const orderRes = await fetch('/api/razorpay/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ couponCode: appliedCoupon?.code ?? '' }),
+        body: JSON.stringify({
+          couponCode: appliedCoupon?.code ?? '',
+          customer: {
+            firstName: fields.firstName.trim(),
+            lastName:  fields.lastName.trim(),
+            email:     fields.email.trim(),
+            city:      fields.city.trim(),
+            phone:     fields.phone.trim(),
+            countryCode,
+            dialCode:  selectedCountryForOrder.dial,
+          },
+          utm: utmForOrder,
+          fbclid: decodeURIComponent(fbclidForOrder),
+        }),
       });
       if (!orderRes.ok) {
         const err = await orderRes.json();
@@ -462,6 +490,24 @@ function CheckoutGrid() {
         throw new Error('Payment system unavailable. Please refresh and try again.');
       }
 
+      // ── Meta CAPI `InitiateCheckout` — fires ONCE per email per browser,
+      // only on the paid path, after form validation passed + Razorpay
+      // order created + modal about to open. Fire-and-forget so payment
+      // is never blocked. localStorage keyed by sha256(email) — a
+      // different email = fresh fire (different real intent).
+      void fireMetaInitiateCheckoutOnce({
+        email:      fields.email.trim(),
+        customer: {
+          firstName: fields.firstName.trim(),
+          lastName:  fields.lastName.trim(),
+          email:     fields.email.trim(),
+          city:      fields.city.trim(),
+          phone:     fields.phone.trim(),
+          countryCode,
+          dialCode:  selectedCountry.dial,
+        },
+      });
+
       const rzp = new window.Razorpay({
         key: keyId ?? process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ?? '',
         amount,
@@ -496,7 +542,10 @@ function CheckoutGrid() {
   }) {
     try {
       const utm = readUtmCookie();
-      const verifyRes = await fetch('/api/razorpay/verify-payment', {
+      // Free-coupon path bypasses Razorpay entirely (₹0 orders), so the
+      // Razorpay webhook can't fire. This tiny route handles Pabbly only
+      // for QA rows; Meta CAPI is deliberately skipped for free orders.
+      const verifyRes = await fetch('/api/checkout/free-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -513,8 +562,6 @@ function CheckoutGrid() {
             dialCode: params.dialCode,
           },
           utm,
-          // Sent for symmetry with the paid path — server ignores it on free
-          // orders (CAPI block is guarded out for free orders).
           eventSourceUrl: typeof window !== 'undefined' ? window.location.href : undefined,
         }),
       });
@@ -542,35 +589,10 @@ function CheckoutGrid() {
 
   async function handlePaymentSuccess(response: RazorpayResponse, dialCode: string) {
     try {
-      const utm = readUtmCookie();
-      const verifyRes = await fetch('/api/razorpay/verify-payment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orderId: response.razorpay_order_id,
-          paymentId: response.razorpay_payment_id,
-          signature: response.razorpay_signature,
-          customer: {
-            firstName: fields.firstName.trim(),
-            lastName: fields.lastName.trim(),
-            email: fields.email.trim(),
-            city: fields.city.trim(),
-            phone: fields.phone.trim(),
-            countryCode,
-            dialCode,
-          },
-          utm,
-          // The URL where the conversion happened — passed to Meta CAPI as
-          // event_source_url. Required for restricted-category accounts.
-          eventSourceUrl: typeof window !== 'undefined' ? window.location.href : undefined,
-        }),
-      });
-      const result = await verifyRes.json();
-      if (!result.success) throw new Error(result.error ?? 'Payment verification failed.');
-      // Stash hashed identifiers in sessionStorage so the next PageView
-      // (/thank-you) carries Manual Advanced Matching data — same hashes as
-      // server CAPI sends, so Meta sees a consistent user_data block across
-      // browser + server.
+      // Pabbly + Meta CAPI Purchase/sales are now fired server-to-server
+      // by /api/razorpay/webhook when Razorpay POSTs `payment.captured` —
+      // decouples our reporting from whether the user's browser returns
+      // (UPI-away users no longer disappear). Nothing to POST here.
       await writeMam({
         email: fields.email.trim(),
         phone: `${dialCode}${fields.phone.trim()}`,
@@ -579,14 +601,73 @@ function CheckoutGrid() {
         city: fields.city.trim(),
         country: countryCode,
       });
-      router.push(buildTYUrl({ amount: result.amount, currency: result.currency }));
+      router.push(
+        buildTYUrl({
+          amount: CHECKOUT_CONFIG.amountRupeesNumeric,
+          currency: CHECKOUT_CONFIG.currency,
+        }),
+      );
     } catch (err) {
       setLoading(false);
       const msg =
         err instanceof Error
           ? err.message
-          : 'Payment received but verification failed. Please contact us.';
+          : 'Payment received but something went wrong. Please contact us.';
       showToast(msg);
+    }
+    // `response` (payment ID/order ID/signature) is intentionally unused
+    // client-side now — the webhook path receives everything it needs
+    // directly from Razorpay. `dialCode` still used in the writeMam call
+    // above via the closure over the outer scope's fields.
+    void response;
+    void dialCode;
+  }
+
+  /**
+   * Meta CAPI `InitiateCheckout` — deduped by sha256(email). Fired
+   * fire-and-forget between create-order returning and Razorpay modal
+   * opening. Payment flow is NEVER blocked by this call.
+   */
+  async function fireMetaInitiateCheckoutOnce(params: {
+    email: string;
+    customer: {
+      firstName: string;
+      lastName: string;
+      email: string;
+      city: string;
+      phone: string;
+      countryCode: string;
+      dialCode: string;
+    };
+  }) {
+    try {
+      const emailNorm = params.email.toLowerCase();
+      const bytes = new TextEncoder().encode(emailNorm);
+      const digest = await crypto.subtle.digest('SHA-256', bytes);
+      const emailHash = Array.from(new Uint8Array(digest))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+
+      const KEY = 'bw_ic_fired';
+      let existing: string | null = null;
+      try {
+        existing = window.localStorage.getItem(KEY);
+      } catch { /* private mode — best effort */ }
+      if (existing === emailHash) return;
+
+      const res = await fetch('/api/meta/initiate-checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer: params.customer,
+          eventSourceUrl: window.location.href,
+        }),
+      });
+      if (res.ok) {
+        try { window.localStorage.setItem(KEY, emailHash); } catch { /* ignore */ }
+      }
+    } catch {
+      // Never surface analytics errors to the buyer mid-checkout.
     }
   }
 

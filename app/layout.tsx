@@ -1,9 +1,11 @@
 import type { Metadata, Viewport } from 'next';
 import Link from 'next/link';
+import { headers } from 'next/headers';
 import { Plus_Jakarta_Sans, Poppins, Fraunces } from 'next/font/google';
 import Script from 'next/script';
 import UtmCapture from '@/components/UtmCapture';
 import MetaPixel from '@/components/MetaPixel';
+import CheckoutIntentListener from '@/components/CheckoutIntentListener';
 import { CHECKOUT_CONFIG } from '@/lib/checkout-config';
 import './globals.css';
 
@@ -41,8 +43,11 @@ const editorial = Fraunces({
 // Sourced from .env.local — set NEXT_PUBLIC_GA4_MEASUREMENT_ID and
 // NEXT_PUBLIC_CLARITY_PROJECT_ID to render the corresponding scripts below.
 // Empty values are treated as "tracker disabled" (script slot skipped).
-const GA4_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA4_MEASUREMENT_ID ?? '';
-const CLARITY_PROJECT_ID = process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID ?? '';
+// GA4 + Clarity are ALSO host-gated inside RootLayout (see below) so
+// staging / preview / localhost traffic never lands in production
+// analytics properties — mirrors the Meta CAPI productionHosts gate.
+const GA4_MEASUREMENT_ID_ENV = process.env.NEXT_PUBLIC_GA4_MEASUREMENT_ID ?? '';
+const CLARITY_PROJECT_ID_ENV = process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID ?? '';
 
 const PRICE = CHECKOUT_CONFIG.amountRupeesNumeric;
 
@@ -70,6 +75,17 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  // Host-gate GA4 + Clarity to production. On preview / localhost the
+  // helper `trackGa4EventOnce` sees `window.gtag === undefined` and
+  // returns without stamping its dedup flag, so those events fire cleanly
+  // on the next properly-configured session.
+  const requestHost = (headers().get('host') ?? '')
+    .toLowerCase()
+    .split(':')[0];
+  const isProductionHost = CHECKOUT_CONFIG.capi.productionHosts.includes(requestHost);
+  const GA4_MEASUREMENT_ID = isProductionHost ? GA4_MEASUREMENT_ID_ENV : '';
+  const CLARITY_PROJECT_ID = isProductionHost ? CLARITY_PROJECT_ID_ENV : '';
+
   return (
     <html lang="en" className={`${heading.variable} ${body.variable} ${editorial.variable}`}>
       <body className="bodyworx-root font-body bg-white text-ink antialiased">
@@ -88,6 +104,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
         {/* Site-wide UTM persistence: writes cookie + rewrites URL on every nav */}
         <UtmCapture />
+
+        {/* Fires Meta CAPI AddToCart + GA4 add_to_cart when any anchor
+            with href="/checkout" is clicked. Deduped once per browser. */}
+        <CheckoutIntentListener />
 
         {children}
 
