@@ -4,16 +4,26 @@ import { useEffect } from 'react';
 import { X } from '@phosphor-icons/react/dist/ssr';
 
 type VideoLightboxProps = {
-  /** Direct MP4 URL. When set, the modal is open. `null` = closed. */
+  /**
+   * Direct MP4 URL, or a player.vimeo.com URL. When set, the modal is open.
+   * `null` = closed.
+   */
   videoUrl: string | null;
   onClose: () => void;
 };
+
+/** Vimeo-hosted testimonials must use the iframe embed — a player.vimeo.com
+ *  URL is a player page, not a media file, so <video src> cannot play it. */
+function isVimeo(url: string): boolean {
+  return /(^|\.)vimeo\.com\//.test(url);
+}
 
 /**
  * Full-screen video lightbox.
  *
  * - Renders a fixed overlay above the page when `videoUrl` is set.
- * - Plays the MP4 via HTML5 <video> at 100% width inside a 16:9 frame.
+ * - Plays CDN MP4s via HTML5 <video>, and Vimeo-hosted clips via the Vimeo
+ *   iframe embed, at 100% width inside a 16:9 frame.
  * - Closes on ESC, on overlay-click, or via the X button.
  * - Locks body scroll while open.
  *
@@ -65,15 +75,26 @@ export default function VideoLightbox({ videoUrl, onClose }: VideoLightboxProps)
           {/* key=videoUrl forces React to remount when the URL changes, so
               the player resets cleanly between testimonials instead of
               continuing the previous one. */}
-          <video
-            key={videoUrl}
-            src={videoUrl}
-            controls
-            autoPlay
-            playsInline
-            preload="auto"
-            className="absolute inset-0 h-full w-full object-contain"
-          />
+          {isVimeo(videoUrl) ? (
+            <iframe
+              key={videoUrl}
+              src={`${videoUrl}${videoUrl.includes('?') ? '&' : '?'}autoplay=1&title=0&byline=0&portrait=0&dnt=1`}
+              title="Video testimonial"
+              allow="autoplay; fullscreen; picture-in-picture"
+              allowFullScreen
+              className="absolute inset-0 h-full w-full border-0"
+            />
+          ) : (
+            <video
+              key={videoUrl}
+              src={videoUrl}
+              controls
+              autoPlay
+              playsInline
+              preload="auto"
+              className="absolute inset-0 h-full w-full object-contain"
+            />
+          )}
         </div>
       </div>
     </div>

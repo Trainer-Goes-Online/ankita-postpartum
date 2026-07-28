@@ -11,7 +11,7 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { LazyMotion, domAnimation, m, useReducedMotion, useScroll, useTransform, type Variants } from './motion-lite';
+import { LazyMotion, domAnimation, m, useReducedMotion, type Variants } from './motion-lite';
 import { useEffect, useRef, useState } from 'react';
 import {
   Wind,
@@ -50,7 +50,7 @@ import VideoLightbox from '@/components/VideoLightbox';
 import Icon3D from '@/components/Icon3D';
 import CountUp from '@/components/CountUp';
 import StickyCTA from '@/components/StickyCTA';
-import { VIDEO_TESTIMONIALS, IMAGE_TESTIMONIALS } from '@/lib/testimonials';
+import { VIDEO_TESTIMONIALS, VIDEO_TESTIMONIALS_2, IMAGE_TESTIMONIALS } from '@/lib/testimonials';
 import {
   C,
   PRICE,
@@ -122,6 +122,61 @@ function useArmNear<T extends Element>(rootMargin = '1200px') {
     return () => io.disconnect();
   }, [armed, rootMargin]);
   return { ref, armed };
+}
+
+/**
+ * Scroll-linked progress fill for the 5-day timeline.
+ *
+ * motion-lite ships no-op `useScroll`/`useTransform` stubs — that's the whole
+ * point of it (zero framer-motion JS below the fold), which left the timeline's
+ * progress line permanently full. This is the replacement driver: it maps the
+ * section's position to a 0→1 scaleY and writes it straight to the node inside
+ * a rAF, so scrolling never triggers a React render.
+ *
+ * Progress mirrors the original framer offset ['start 70%', 'end 30%']:
+ * 0 when the section top crosses 70% of the viewport, 1 when its bottom
+ * crosses 30%. Reduced-motion users get the line filled outright.
+ */
+function useTimelineProgress<S extends HTMLElement, F extends HTMLElement>() {
+  const sectionRef = useRef<S>(null);
+  const fillRef = useRef<F>(null);
+
+  useEffect(() => {
+    const section = sectionRef.current;
+    const fill = fillRef.current;
+    if (!section || !fill) return;
+
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      fill.style.transform = 'scaleY(1)';
+      return;
+    }
+
+    let raf = 0;
+    const update = () => {
+      raf = 0;
+      const rect = section.getBoundingClientRect();
+      const vh = window.innerHeight;
+      const start = vh * 0.7; // top of section at 70% viewport height → 0
+      const end = vh * 0.3; // bottom of section at 30% viewport height → 1
+      const span = rect.height + start - end || 1;
+      const p = (start - rect.top) / span;
+      fill.style.transform = `scaleY(${Math.min(1, Math.max(0, p))})`;
+    };
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(update);
+    };
+
+    update();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, []);
+
+  return { sectionRef, fillRef };
 }
 
 // ── Below-the-fold sections ──────────────────────────────────────────────────
@@ -233,12 +288,17 @@ const FEATURES: { icon: typeof Wind; title: string; body: string }[] = [
   {
     icon: Baby,
     title: 'Recovery for Real Mom Life',
-    body: 'Feel more stable, supported, and confident in everyday activities — lifting your baby, climbing stairs, moving pain-free.',
+    body: 'Feel stronger, more stable, and more energetic with recovery habits that combine corrective movement and simple postpartum nutrition for everyday life.',
   },
   {
     icon: HandHeart,
     title: 'Live Guidance & Form Corrections',
     body: 'Clear instructions, real-time feedback, and adjustments so you’re not just moving — you’re healing safely and correctly.',
+  },
+  {
+    icon: BowlFood,
+    title: 'Postpartum Nutrition That Supports Healing',
+    body: 'Simple, practical nutrition guidance to reduce bloating, support tissue healing, improve energy, and fuel recovery without crash dieting or restrictive meal plans.',
   },
 ];
 
@@ -276,13 +336,30 @@ function Experience() {
           viewport={{ once: true, amount: 0.15 }}
           className="mt-14 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3"
         >
-          {FEATURES.map(({ icon: Icon, title, body }) => (
+          {FEATURES.map(({ icon: Icon, title, body }, idx) => {
+            // 7 features → both breakpoints leave a single orphan in the last
+            // row (2-col: 3 rows + 1 · 3-col: 2 rows + 1). The orphan spans the
+            // full row but is width-capped + centered so it reads as one normal
+            // card instead of a stranded left-aligned one. Widths mirror the
+            // gap-5 (20px) track math at each breakpoint.
+            const isOrphan = idx === FEATURES.length - 1;
+            const placement = [
+              isOrphan && FEATURES.length % 2 === 1
+                ? 'sm:col-span-2 sm:mx-auto sm:w-full sm:max-w-[calc(50%-10px)]'
+                : '',
+              isOrphan && FEATURES.length % 3 === 1
+                ? 'lg:col-span-3 lg:max-w-[calc(33.333%-13.334px)]'
+                : '',
+            ]
+              .filter(Boolean)
+              .join(' ');
+            return (
             <m.article
               key={title}
               variants={fadeUp}
               whileHover={{ y: -4 }}
               transition={{ duration: 0.3, ease: EASE }}
-              className="relative overflow-hidden rounded-2xl p-7"
+              className={`relative overflow-hidden rounded-2xl p-7 ${placement}`}
               style={{ background: 'white', border: `1px solid ${C.line}` }}
             >
               <span
@@ -298,7 +375,8 @@ function Experience() {
                 {body}
               </p>
             </m.article>
-          ))}
+            );
+          })}
         </m.div>
       </div>
     </section>
@@ -334,19 +412,14 @@ const DAYS: { num: number; icon: typeof Wind; title: string; body: string }[] = 
   {
     num: 5,
     icon: Flame,
-    title: 'Fat Loss Real Talk + Upper Back Strength',
-    body: 'How long-term fat loss actually works postpartum + upper back strengthening + core support.',
+    title: 'Fat Loss + Nutrition Reset',
+    body: 'Learn why postpartum fat loss isn’t about eating less. Discover simple nutrition habits that support healing, reduce bloating, improve energy, and help your body recover safely.',
   },
 ];
 
 function FiveDaySchedule() {
-  const sectionRef = useRef<HTMLDivElement>(null);
-  const { scrollYProgress } = useScroll({
-    target: sectionRef,
-    offset: ['start 70%', 'end 30%'],
-  });
-  // Vertical progress line fill that follows scroll.
-  const lineScale = useTransform(scrollYProgress, [0, 1], [0, 1]);
+  // Vertical progress line fill that follows scroll — see useTimelineProgress.
+  const { sectionRef, fillRef } = useTimelineProgress<HTMLElement, HTMLDivElement>();
 
   return (
     <section
@@ -386,10 +459,19 @@ function FiveDaySchedule() {
             className="absolute top-0 bottom-0 left-[22px] w-[2px] md:left-1/2 md:-translate-x-1/2"
             style={{ background: C.line }}
           />
-          <m.div
+          {/* Scroll-linked fill. Positioned with a calc() left rather than
+              md:-translate-x-1/2 like the track above — the inline scaleY
+              transform overrides that utility and would otherwise leave the
+              fill sitting 1px off the track. */}
+          <div
             aria-hidden
-            style={{ scaleY: lineScale, transformOrigin: 'top', background: `linear-gradient(180deg, ${C.brand}, ${C.bright})` }}
-            className="absolute top-0 bottom-0 left-[22px] w-[2px] md:left-1/2 md:-translate-x-1/2"
+            ref={fillRef}
+            style={{
+              transform: 'scaleY(0)',
+              transformOrigin: 'top',
+              background: `linear-gradient(180deg, ${C.brand}, ${C.bright})`,
+            }}
+            className="absolute top-0 bottom-0 left-[22px] w-[2px] md:left-[calc(50%-1px)]"
           />
 
           <ol className="space-y-12 md:space-y-20">
@@ -599,16 +681,66 @@ function DoesThisSoundLikeYou() {
 }
 
 // ── 8. Video testimonials — continuous marquee (autoplay + infinite loop) ────
-const TESTIMONIALS_DURATION = 60;
+// Seconds each tile takes to travel one tile-width. Rows hold different numbers
+// of videos, so the loop duration is derived per row from this — a flat 60s for
+// both would make the 13-tile row scroll twice as fast as the 6-tile one.
+const TESTIMONIALS_SECONDS_PER_TILE = 10;
 
-function Testimonials() {
-  const [openId, setOpenId] = useState<string | null>(null);
+/**
+ * One infinite testimonial row. Both rows share this so playback, tile size,
+ * hover and lightbox behaviour stay identical — the lower row only differs in
+ * travel direction and in showing the speaker's name on the tile.
+ */
+function TestimonialMarquee({
+  items,
+  direction,
+  showNames = false,
+  onOpen,
+}: {
+  items: typeof VIDEO_TESTIMONIALS;
+  direction: 'left' | 'right';
+  showNames?: boolean;
+  onOpen: (videoUrl: string) => void;
+}) {
   const reduce = useReducedMotion();
   const { ref: marqueeRef, armed } = useArmNear<HTMLDivElement>();
 
-  // Duplicate so the -50% translate lands exactly on the duplicate copy →
+  // Duplicate so the 50% translate lands exactly on the duplicate copy →
   // seamless infinite loop with no visible seam.
-  const track = [...VIDEO_TESTIMONIALS, ...VIDEO_TESTIMONIALS];
+  const track = [...items, ...items];
+  const xKeyframes = direction === 'left' ? ['0%', '-50%'] : ['-50%', '0%'];
+  // Scale the loop to the row's length so both rows travel at the same speed.
+  const duration = items.length * TESTIMONIALS_SECONDS_PER_TILE;
+
+  return (
+    <div ref={marqueeRef} className="relative overflow-hidden">
+      <m.div
+        className="flex w-max gap-4"
+        animate={reduce ? undefined : { x: xKeyframes }}
+        transition={{
+          duration,
+          ease: 'linear',
+          repeat: Infinity,
+          repeatType: 'loop',
+        }}
+      >
+        {track.map((v, i) => (
+          <VideoTile
+            key={`${v.videoUrl}-${i}`}
+            poster={v.poster}
+            name={showNames ? v.name : undefined}
+            index={(i % items.length) + 1}
+            eager={armed}
+            onClick={() => onOpen(v.videoUrl)}
+          />
+        ))}
+      </m.div>
+    </div>
+  );
+}
+
+function Testimonials() {
+  const [openId, setOpenId] = useState<string | null>(null);
 
   return (
     <section className="py-16 md:py-24" style={{ background: C.whisper }}>
@@ -637,27 +769,20 @@ function Testimonials() {
         </m.div>
       </div>
 
-      <div ref={marqueeRef} className="relative mt-10 overflow-hidden sm:mt-12">
-        <m.div
-          className="flex w-max gap-4"
-          animate={reduce ? undefined : { x: ['0%', '-50%'] }}
-          transition={{
-            duration: TESTIMONIALS_DURATION,
-            ease: 'linear',
-            repeat: Infinity,
-            repeatType: 'loop',
-          }}
-        >
-          {track.map((v, i) => (
-            <VideoTile
-              key={`${v.videoUrl}-${i}`}
-              poster={v.poster}
-              index={(i % VIDEO_TESTIMONIALS.length) + 1}
-              eager={armed}
-              onClick={() => setOpenId(v.videoUrl)}
-            />
-          ))}
-        </m.div>
+      {/* Two rows travelling opposite ways — the counter-scroll reads as a
+          single wall of proof rather than two separate sliders. */}
+      <div className="mt-10 flex flex-col gap-4 sm:mt-12">
+        <TestimonialMarquee
+          items={VIDEO_TESTIMONIALS}
+          direction="left"
+          onOpen={setOpenId}
+        />
+        <TestimonialMarquee
+          items={VIDEO_TESTIMONIALS_2}
+          direction="right"
+          showNames
+          onOpen={setOpenId}
+        />
       </div>
 
       <VideoLightbox videoUrl={openId} onClose={() => setOpenId(null)} />
@@ -669,11 +794,14 @@ function VideoTile({
   poster,
   index,
   eager,
+  name,
   onClick,
 }: {
   poster: string;
   index: number;
   eager?: boolean;
+  /** When set, the speaker's name is shown on the tile. */
+  name?: string;
   onClick: () => void;
 }) {
   return (
@@ -683,7 +811,7 @@ function VideoTile({
       onClick={onClick}
       whileHover={{ scale: 1.02 }}
       transition={{ duration: 0.25, ease: EASE }}
-      aria-label={`Play video testimonial ${index}`}
+      aria-label={name ? `Play ${name}'s video testimonial` : `Play video testimonial ${index}`}
       className="group relative block aspect-[3/4] w-[200px] shrink-0 cursor-pointer overflow-hidden rounded-2xl shadow-soft transition-shadow focus-visible:outline-none focus-visible:ring-4 sm:w-[240px] lg:w-[260px]"
       style={{ border: `1px solid ${C.line}` }}
     >
@@ -710,6 +838,35 @@ function VideoTile({
           </svg>
         </span>
       </span>
+
+      {/* Name plate. The first row's posters ship with a brand wash and a
+          centred italic display name baked into the artwork; these frames are
+          raw, so the same treatment is applied in CSS to keep both rows
+          reading as one set. */}
+      {name && (
+        <>
+          <span
+            aria-hidden
+            className="absolute inset-0"
+            style={{
+              background: `linear-gradient(180deg, rgba(242,76,105,0.22), rgba(242,76,105,0.06) 42%, rgba(199,58,87,0.28) 100%)`,
+            }}
+          />
+          <span
+            className="absolute inset-x-0 bottom-0 px-2.5 pb-3.5 pt-10 text-center"
+            style={{
+              background: `linear-gradient(to top, rgba(31,16,20,0.88) 12%, rgba(31,16,20,0.42) 58%, transparent)`,
+            }}
+          >
+            <span
+              className="block truncate font-editorial text-[15px] font-bold uppercase italic leading-tight tracking-[0.06em] text-white sm:text-[17px]"
+              style={{ textShadow: '0 2px 10px rgba(0,0,0,0.45)' }}
+            >
+              {name}
+            </span>
+          </span>
+        </>
+      )}
     </m.button>
   );
 }
@@ -872,7 +1029,7 @@ function ValueIntro() {
             style={{ color: C.ink }}
           >
             Your 5-Day Recovery Trial &amp;<br />
-            <span style={{ color: C.brand }}>Personalized Healing Roadmap.</span>
+            <span style={{ color: C.brand }}>Personalized Healing &amp; Nutrition Roadmap.</span>
           </m.h2>
           <m.p variants={fadeUp} className="mt-3 text-[14.5px]" style={{ color: C.inkMuted }}>
             (Powered by the BodyWorx Postpartum Recovery Method™)
@@ -911,9 +1068,9 @@ const BUNDLE: { imgSrc: string; title: string; value: number; body: string }[] =
   },
   {
     imgSrc: '/transformations/nutrition.png',
-    title: 'Nutrition Mistake Identification (Postpartum-Safe)',
+    title: 'Personalized Nutrition Review',
     value: 1100,
-    body: 'Identify food habits that slow tissue healing, increase bloating, fatigue, and inflammation — without extreme dieting.',
+    body: 'Identify the food habits slowing your recovery and receive simple postpartum-safe nutrition guidance to support tissue healing, reduce bloating, improve energy, and complement your recovery exercises.',
   },
   {
     imgSrc: '/transformations/howtostart.png',
@@ -1116,7 +1273,9 @@ function Founder() {
           </m.h2>
 
           <m.p variants={fadeUp} className="mt-5 text-[15px] leading-relaxed sm:text-[16.5px]" style={{ color: C.inkSoft }}>
-            Dr. Ankita is a <strong>physiotherapist, nutritionist, and mom</strong> who fixed her own body after delivery.
+            Dr. Ankita is a <strong>physiotherapist, certified nutritionist, and mom</strong> who understands that
+            postpartum recovery isn&apos;t just about exercise. It&apos;s about helping your body heal through the
+            right movement, nutrition, and daily habits.
           </m.p>
           <m.p variants={fadeUp} className="mt-4 text-[15px] leading-relaxed sm:text-[16.5px]" style={{ color: C.inkSoft }}>
             She saw too many moms doing &ldquo;random workouts&rdquo; that actually made their belly gaps and leaks worse. She
@@ -1275,7 +1434,11 @@ const PILLARS: { icon: typeof Wind; title: string; body: string }[] = [
   { icon: Wind, title: 'Breathing & Pressure Control', body: 'Stops belly push-out, protects DR & pelvic floor.' },
   { icon: HandHeart, title: 'Core + Pelvic Floor Reconnection', body: 'Muscles reconnect before they strengthen.' },
   { icon: Brain, title: 'Stress & Nervous System Load', body: 'Healing doesn’t happen in survival mode.' },
-  { icon: BowlFood, title: 'Postpartum-Supportive Nutrition', body: 'Supports recovery — not starvation.' },
+  {
+    icon: BowlFood,
+    title: 'Postpartum-Supportive Nutrition',
+    body: 'Supports tissue healing, hormone recovery, energy levels, and sustainable fat loss without restrictive dieting.',
+  },
   { icon: PersonSimpleRun, title: 'Daily Movement Mistakes', body: 'Lifting, feeding & sitting corrected first.' },
 ];
 
@@ -1345,7 +1508,9 @@ const NOTICES: { icon: typeof Wind; label: string }[] = [
   { icon: HandHeart, label: 'Belly feels flatter (without crunches)' },
   { icon: Drop, label: 'Urine leaks reduce or stop' },
   { icon: Bandaids, label: 'Back pain eases' },
-  { icon: Wind, label: 'Bloating settles' },
+  { icon: Wind, label: 'Less bloating after meals' },
+  { icon: BowlFood, label: 'Digestion feels lighter' },
+  { icon: Pulse, label: 'Better recovery between sessions' },
   { icon: Lightning, label: 'Energy improves' },
   { icon: Sparkle, label: 'Confidence returns' },
 ];
@@ -1368,13 +1533,26 @@ function MomsNotice() {
           initial="hidden"
           whileInView="show"
           viewport={{ once: true, amount: 0.2 }}
-          className="mt-10 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+          className="mt-10 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6"
         >
-          {NOTICES.map(({ icon: Icon, label }) => (
+          {NOTICES.map(({ icon: Icon, label }, idx) => {
+            // 3-up at lg via a 6-col track (each card spans 2) so a short last
+            // row can be centred — plain `grid-cols-3` can only left-align it.
+            // The first card of an incomplete last row gets a col-start offset:
+            // 2 leftovers → start at col 2 (spans 2–5), 1 leftover → col 3.
+            const remainder = NOTICES.length % 3;
+            const lastRowStart = NOTICES.length - remainder;
+            const offset =
+              remainder && idx === lastRowStart
+                ? remainder === 2
+                  ? 'lg:col-start-2'
+                  : 'lg:col-start-3'
+                : '';
+            return (
             <m.div
               key={label}
               variants={fadeUp}
-              className="flex items-center gap-3 rounded-xl p-4"
+              className={`flex items-center gap-3 rounded-xl p-4 lg:col-span-2 ${offset}`}
               style={{ background: 'white', border: `1px solid ${C.line}` }}
             >
               <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full" style={{ background: C.blush }}>
@@ -1382,7 +1560,8 @@ function MomsNotice() {
               </span>
               <span className="text-[14.5px] font-medium" style={{ color: C.inkSoft }}>{label}</span>
             </m.div>
-          ))}
+            );
+          })}
         </m.div>
       </div>
     </section>
@@ -1433,8 +1612,8 @@ function LetsBeHonest() {
               Option 2
             </div>
             <p className="mt-4 text-[15px] leading-relaxed">
-              Take action and get a doctor-designed postpartum diagnosis + personalized recovery roadmap, so you know
-              exactly what&apos;s blocking your recovery and what to do next safely.
+              Take action and get a doctor-designed postpartum diagnosis + personalized recovery and nutrition
+              roadmap, so you know exactly what&apos;s blocking your recovery and what to do next safely.
             </p>
             <Link
               href="/checkout"
@@ -1457,7 +1636,7 @@ const RECAP: { title: string; value: number }[] = [
   { title: 'DR (Diastasis Recti) Gap Check & Analysis', value: 900 },
   { title: 'Core & Pelvic Floor Safety Check', value: 900 },
   { title: 'Posture & Back Pain Fix', value: 900 },
-  { title: 'Tummy-Flattening Food Guide', value: 1100 },
+  { title: 'Personalized Postpartum Nutrition Guide', value: 1100 },
   { title: 'Personalized Welcome Video', value: 1700 },
   { title: 'Safe Exercise Starter Guide', value: 900 },
   { title: '20 Mom Secrets Guide', value: 900 },

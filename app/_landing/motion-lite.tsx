@@ -18,9 +18,9 @@
  *   LazyMotion / domAnimation                          → provider + no-op
  *
  * Visual result matches the framer version: fade/slide/scale-in on scroll,
- * continuous marquees, hover lifts. The only intentional difference is the
- * scroll-progress line (FiveDaySchedule), which renders fully filled instead of
- * scroll-linked — a decorative detail.
+ * continuous marquees, hover lifts. The useScroll/useTransform stubs remain
+ * no-ops — anything genuinely scroll-linked drives itself instead (see
+ * useTimelineProgress in ./below-fold for the 5-day timeline's progress line).
  */
 import React, { forwardRef, useEffect } from 'react';
 
