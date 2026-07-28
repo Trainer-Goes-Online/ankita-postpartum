@@ -160,8 +160,9 @@ export function Hero() {
             className="mt-5 max-w-[640px] text-[15px] leading-relaxed sm:text-[16px] lg:mx-0 mx-auto"
             style={{ color: C.inkSoft }}
           >
-            A doctor-led postpartum recovery challenge to reduce mummy belly &amp; DR, improve core stability,
-            and restore confidence in daily movement. Starts <strong>{WEBINAR_DATE}</strong> — live on Zoom.
+            A doctor-led postpartum recovery challenge that combines corrective movement, postpartum-safe
+            nutrition, and expert guidance to reduce mummy belly &amp; DR, restore core stability, and help
+            your body heal from the inside out. Starts <strong>{WEBINAR_DATE}</strong> — live on Zoom.
           </p>
 
           <div className="mt-7 flex flex-col items-center gap-3 sm:flex-row sm:justify-center lg:items-center lg:justify-start">
@@ -251,7 +252,7 @@ function HeroOfferCard() {
             5-Day Postpartum Recovery Challenge
           </h3>
           <p className="mt-1.5 text-[13.5px]" style={{ color: C.inkMuted }}>
-            Live physio-led · Zoom · 3 batch timings
+            Live physio-led + nutrition · Zoom · 3 batch timings
           </p>
 
           {/* Price row */}

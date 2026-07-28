@@ -17,7 +17,11 @@ export type VideoTestimonial = {
   name: string;
   /** Local poster image path (in /public). */
   poster: string;
-  /** Direct MP4 URL on our CDN. Played via HTML5 <video> in the lightbox. */
+  /**
+   * Where the video plays from. Either a direct MP4 on our CDN (rendered as an
+   * HTML5 <video>) or a player.vimeo.com URL (rendered as an iframe embed) —
+   * VideoLightbox picks the right player by sniffing the host.
+   */
   videoUrl: string;
 };
 
@@ -69,6 +73,35 @@ export const VIDEO_TESTIMONIALS: VideoTestimonial[] = [
     videoUrl:
       'https://tgox-production-bucket.nyc3.cdn.digitaloceanspaces.com/client_funnel_videos/Ankita/megha%20(540p).mp4',
   },
+];
+
+/**
+ * Second batch of video testimonials — rendered in the lower marquee row,
+ * scrolling the opposite way to VIDEO_TESTIMONIALS above.
+ *
+ * These live on the "Trainer GoesOnline" Vimeo account rather than the DO
+ * Spaces CDN (they were never uploaded there), so they play through Vimeo's
+ * iframe embed instead of an HTML5 <video>. If they are ever moved onto the
+ * CDN, swap `videoUrl` for the direct MP4 and the lightbox needs no change.
+ *
+ * Posters are frames pulled from each video and cropped to the 3:4 tile ratio.
+ * Because these are Zoom/phone screen-recordings, the frames were trimmed to
+ * drop the OS status bar and player chrome that sat top and bottom.
+ */
+export const VIDEO_TESTIMONIALS_2: VideoTestimonial[] = [
+  { name: 'Nidhi Pandey',     poster: '/testimonials/videos-2/nidhi-pandey.jpg',     videoUrl: 'https://player.vimeo.com/video/1213468575' },
+  { name: 'Lakshmi Naveen',   poster: '/testimonials/videos-2/lakshmi-naveen.jpg',   videoUrl: 'https://player.vimeo.com/video/1213468570' },
+  { name: 'Abinaya',          poster: '/testimonials/videos-2/abinaya.jpg',          videoUrl: 'https://player.vimeo.com/video/1213468578' },
+  { name: 'Preethi',          poster: '/testimonials/videos-2/preethi.jpg',          videoUrl: 'https://player.vimeo.com/video/1213468571' },
+  { name: 'Pooja Sharath',    poster: '/testimonials/videos-2/pooja-sharath.jpg',    videoUrl: 'https://player.vimeo.com/video/1213468579' },
+  { name: 'Sindhu Reddy',     poster: '/testimonials/videos-2/sindhu-reddy.jpg',     videoUrl: 'https://player.vimeo.com/video/1213468598' },
+  { name: 'Divya',            poster: '/testimonials/videos-2/divya.jpg',            videoUrl: 'https://player.vimeo.com/video/1213468586' },
+  { name: 'Sarita Ghanshani', poster: '/testimonials/videos-2/sarita-ghanshani.jpg', videoUrl: 'https://player.vimeo.com/video/1213468583' },
+  { name: 'Raman Preet',      poster: '/testimonials/videos-2/raman-preet.jpg',      videoUrl: 'https://player.vimeo.com/video/1213468587' },
+  { name: 'Pooja',            poster: '/testimonials/videos-2/pooja.jpg',            videoUrl: 'https://player.vimeo.com/video/1213468568' },
+  { name: 'Sindhu Madhuri',   poster: '/testimonials/videos-2/sindhu-madhuri.jpg',   videoUrl: 'https://player.vimeo.com/video/1213468590' },
+  { name: 'Madhu Khuti',      poster: '/testimonials/videos-2/madhu-khuti.jpg',      videoUrl: 'https://player.vimeo.com/video/1213468580' },
+  { name: 'Nasim Shah',       poster: '/testimonials/videos-2/nasim-shah.jpg',       videoUrl: 'https://player.vimeo.com/video/1213468567' },
 ];
 
 /** All 34 image testimonials (before/after, chat screenshots, etc.) used in
