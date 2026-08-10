@@ -114,6 +114,7 @@ export async function POST(req: NextRequest) {
       ct?: string;
       co?: string;
       dl?: string;
+      oc?: string;
     } = {};
     try {
       if (notes.cust) cust = JSON.parse(String(notes.cust));
@@ -182,6 +183,7 @@ export async function POST(req: NextRequest) {
     const rawPhone  = cust.ph ?? '';
     const dialCode  = cust.dl ?? '';
     const countryCode = cust.co ?? '';
+    const occupation  = cust.oc ?? '';
     const pabblyPayload = {
       first_name:        firstName,
       last_name:         lastName,
@@ -216,6 +218,7 @@ export async function POST(req: NextRequest) {
       is_test:           'false',
       purchase_event_id: paymentId,
       fbclid:            fbclid,
+      occupation:        occupation,
     };
 
     // ── 7. Fire Pabbly (non-blocking) ───────────────────────────────────

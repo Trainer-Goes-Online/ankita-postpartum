@@ -127,12 +127,15 @@ const COUNTRIES: Country[] = [
 const NAME_RE = /^[a-zA-Z\s\-'.]{2,}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
+type Occupation = '' | 'Working Professional' | 'Homemaker';
+
 interface FormFields {
   firstName: string;
   lastName: string;
   email: string;
   city: string;
   phone: string;
+  occupation: Occupation;
 }
 interface FormErrors {
   firstName?: string;
@@ -140,6 +143,7 @@ interface FormErrors {
   email?: string;
   city?: string;
   phone?: string;
+  occupation?: string;
 }
 
 function validateFields(fields: FormFields, countryCode: string): FormErrors {
@@ -171,6 +175,7 @@ function validateFields(fields: FormFields, countryCode: string): FormErrors {
       }
     }
   }
+  if (!fields.occupation) errors.occupation = 'Please select an option.';
   return errors;
 }
 
@@ -292,6 +297,7 @@ function CheckoutGrid() {
     email: '',
     city: '',
     phone: '',
+    occupation: '',
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<keyof FormFields, boolean>>({
@@ -300,6 +306,7 @@ function CheckoutGrid() {
     email: false,
     city: false,
     phone: false,
+    occupation: false,
   });
   const [countryCode, setCountryCode] = useState('IN');
   const [loading, setLoading] = useState(false);
@@ -414,7 +421,7 @@ function CheckoutGrid() {
     // click, BEFORE validation. Captures Pay-button intent (including
     // half-filled bounces). Deduped once per browser via bw_ga4_ic_fired.
     trackGa4EventOnce('initiate_checkout');
-    setTouched({ firstName: true, lastName: true, email: true, city: true, phone: true });
+    setTouched({ firstName: true, lastName: true, email: true, city: true, phone: true, occupation: true });
     const allErrors = validateFields(fields, countryCode);
     setErrors(allErrors);
     if (Object.keys(allErrors).length > 0) {
@@ -448,6 +455,7 @@ function CheckoutGrid() {
             phone:     fields.phone.trim(),
             countryCode,
             dialCode:  selectedCountryForOrder.dial,
+            occupation: fields.occupation,
           },
           utm: utmForOrder,
           fbclid: decodeURIComponent(fbclidForOrder),
@@ -505,6 +513,7 @@ function CheckoutGrid() {
           phone:     fields.phone.trim(),
           countryCode,
           dialCode:  selectedCountry.dial,
+          occupation: fields.occupation,
         },
       });
 
@@ -560,6 +569,7 @@ function CheckoutGrid() {
             phone: fields.phone.trim(),
             countryCode,
             dialCode: params.dialCode,
+            occupation: fields.occupation,
           },
           utm,
           eventSourceUrl: typeof window !== 'undefined' ? window.location.href : undefined,
@@ -638,6 +648,7 @@ function CheckoutGrid() {
       phone: string;
       countryCode: string;
       dialCode: string;
+      occupation?: string;
     };
   }) {
     try {
@@ -668,6 +679,48 @@ function CheckoutGrid() {
       }
     } catch {
       // Never surface analytics errors to the buyer mid-checkout.
+    }
+  }
+
+  /**
+   * Meta CAPI `QualifiedLead` — fired ONCE per browser the first time
+   * the visitor selects "Working Professional" in the occupation
+   * dropdown. Uses whatever identifiers are already in the form at that
+   * moment (email may or may not be filled yet). Fire-and-forget so the
+   * dropdown selection is never blocked.
+   */
+  async function fireMetaQualifiedLeadOnce(customer: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    city: string;
+    phone: string;
+    countryCode: string;
+    dialCode: string;
+  }) {
+    try {
+      if (typeof window === 'undefined') return;
+      const KEY = 'bw_ql_fired';
+      let existing: string | null = null;
+      try {
+        existing = window.localStorage.getItem(KEY);
+      } catch { /* private mode — best effort */ }
+      if (existing === '1') return;
+
+      // Stamp BEFORE the fetch so a fast browse-away can't double-fire.
+      try { window.localStorage.setItem(KEY, '1'); } catch { /* ignore */ }
+
+      await fetch('/api/meta/qualified-lead', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer,
+          eventSourceUrl: window.location.href,
+        }),
+        keepalive: true,
+      });
+    } catch {
+      // Never surface analytics errors to the buyer.
     }
   }
 
@@ -791,6 +844,63 @@ function CheckoutGrid() {
                   style={{ color: '#DC2626' }}
                 >
                   {errors.phone ?? ' '}
+                </span>
+              </div>
+
+              {/* Occupation — fires the "QualifiedLead" Meta CAPI custom
+                  event when the user picks "Working Professional". Deduped
+                  once per browser via bw_ql_fired. */}
+              <div id="field-occupation" className="flex flex-col">
+                <label htmlFor="occupation" className="mb-1.5 text-[13px] font-semibold" style={{ color: C.ink }}>
+                  Are you a working professional or homemaker? <span style={{ color: C.brand }}>*</span>
+                </label>
+                <div className="relative">
+                  <select
+                    id="occupation"
+                    value={fields.occupation}
+                    onChange={(e) => {
+                      const next = e.target.value as Occupation;
+                      handleChange('occupation', next);
+                      if (next === 'Working Professional') {
+                        void fireMetaQualifiedLeadOnce({
+                          firstName: fields.firstName.trim(),
+                          lastName:  fields.lastName.trim(),
+                          email:     fields.email.trim(),
+                          city:      fields.city.trim(),
+                          phone:     fields.phone.trim(),
+                          countryCode,
+                          dialCode:  (COUNTRIES.find((c) => c.code === countryCode) ?? COUNTRIES[0]).dial,
+                        });
+                      }
+                    }}
+                    onBlur={() => handleBlur('occupation')}
+                    className="w-full appearance-none rounded-2xl border bg-white px-4 py-3 pr-10 text-[15px] outline-none transition-colors"
+                    style={{
+                      borderColor:
+                        touched.occupation && errors.occupation ? '#DC2626' : C.line,
+                      color: fields.occupation ? C.ink : C.inkMuted,
+                    }}
+                  >
+                    <option value="" disabled>Select an option</option>
+                    <option value="Working Professional">Working Professional</option>
+                    <option value="Homemaker">Homemaker</option>
+                  </select>
+                  <CaretDown
+                    weight="bold"
+                    aria-hidden="true"
+                    className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2"
+                    style={{ color: C.inkMuted }}
+                  />
+                </div>
+                <span
+                  role="alert"
+                  className={[
+                    'mt-1 text-[11.5px] transition-opacity',
+                    touched.occupation && !!errors.occupation ? 'opacity-100' : 'opacity-0',
+                  ].join(' ')}
+                  style={{ color: '#DC2626' }}
+                >
+                  {errors.occupation ?? ' '}
                 </span>
               </div>
 

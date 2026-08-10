@@ -181,3 +181,102 @@ export async function sendInitiateCheckoutEvent(params: {
 
   return res.json();
 }
+
+/**
+ * QualifiedLead — fired the first time a visitor identifies as "Working
+ * Professional" in the checkout occupation dropdown. Custom event name
+ * (PascalCase) so Meta's algorithm can be pointed at it as a mid-funnel
+ * optimization signal. Payload uses whatever identifiers the visitor has
+ * already typed into the form — often partial (email may be missing if
+ * they picked occupation first), which is fine.
+ */
+export async function sendQualifiedLeadEvent(params: {
+  pixelId: string;
+  accessToken: string;
+  email: string;
+  phone: string;
+  firstName: string;
+  lastName: string;
+  city: string;
+  country: string;
+  externalId: string | undefined;
+  fbc: string | undefined;
+  fbp: string | undefined;
+  clientIp: string | undefined;
+  clientUserAgent: string | undefined;
+  eventSourceUrl: string;
+}) {
+  const em = hashEmail(params.email);
+  const ph = hashPhone(params.phone);
+  const fn = hashName(params.firstName);
+  const ln = hashName(params.lastName);
+  const ct = hashCity(params.city);
+  const country = hashCountry(params.country);
+  const externalId = params.externalId
+    ? sha256Hex(params.externalId.trim().toLowerCase())
+    : undefined;
+
+  // event_id — dedup by email if we have it (stable per real user across
+  // sessions), otherwise by fbp (per-browser). Meta's 48h same-name +
+  // same-id collapse is a defence-in-depth on top of bw_ql_fired.
+  const emailNorm = params.email.trim().toLowerCase();
+  const eventId = emailNorm
+    ? sha256Hex(`${emailNorm}|ql`)
+    : params.fbp
+      ? sha256Hex(`${params.fbp}|ql`)
+      : `${sha256Hex(`${Date.now()}_${Math.random()}`)}_ql`;
+
+  const userData = {
+    ...(em && { em: [em] }),
+    ...(ph && { ph: [ph] }),
+    ...(fn && { fn: [fn] }),
+    ...(ln && { ln: [ln] }),
+    ...(ct && { ct: [ct] }),
+    ...(country && { country: [country] }),
+    ...(externalId && { external_id: [externalId] }),
+    ...(params.fbc && { fbc: params.fbc }),
+    ...(params.fbp && { fbp: params.fbp }),
+    ...(params.clientUserAgent && { client_user_agent: params.clientUserAgent }),
+    ...(params.clientIp && { client_ip_address: params.clientIp }),
+  };
+
+  // No `value`/`currency` — QualifiedLead is a lead-quality signal, not
+  // a purchase signal; keeping money off it stops it competing with
+  // Purchase in reporting/optimization.
+  const customData = {
+    content_ids: ['postnatal_recovery_challenge'],
+    content_name: '5-Day Postpartum Recovery Challenge — Working Professional',
+    content_type: 'product',
+    lead_type: 'working_professional',
+  };
+
+  const payload = {
+    data: [
+      {
+        event_name: 'QualifiedLead',
+        event_time: Math.floor(Date.now() / 1000),
+        event_id: eventId,
+        action_source: 'website',
+        event_source_url: params.eventSourceUrl,
+        user_data: userData,
+        custom_data: customData,
+      },
+    ],
+  };
+
+  const res = await fetch(
+    `https://graph.facebook.com/v25.0/${params.pixelId}/events?access_token=${params.accessToken}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    },
+  );
+
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(JSON.stringify(err));
+  }
+
+  return res.json();
+}

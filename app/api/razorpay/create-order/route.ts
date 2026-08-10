@@ -52,6 +52,7 @@ type CustomerBody = {
   phone: string;
   countryCode: string;
   dialCode: string;
+  occupation?: string;
 };
 
 type UtmBody = {
@@ -128,6 +129,7 @@ export async function POST(req: NextRequest) {
       ct: customer?.city      ?? '',
       co: customer?.countryCode ?? '',
       dl: customer?.dialCode  ?? '',
+      oc: customer?.occupation ?? '',
     });
     const utmBlob = JSON.stringify({
       s: utm?.source   ?? '',

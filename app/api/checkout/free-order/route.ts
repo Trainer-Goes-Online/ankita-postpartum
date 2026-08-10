@@ -41,6 +41,7 @@ export async function POST(req: NextRequest) {
         phone: string;
         countryCode: string;
         dialCode: string;
+        occupation?: string;
       };
       utm?: Utm;
       eventSourceUrl?: string;
@@ -124,6 +125,7 @@ export async function POST(req: NextRequest) {
       is_test:           'true',
       purchase_event_id: paymentId,
       fbclid:            fbclid,
+      occupation:        customer.occupation ?? '',
     };
 
     const webhookUrl = process.env.PABBLY_WEBHOOK_URL;
