@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { CHECKOUT_CONFIG } from '@/lib/checkout-config';
 import { sendInitiateCheckoutEvent } from '@/lib/meta-events';
 import type { CustomerData } from '@/lib/meta-capi';
+import {
+  ATTR_COOKIE,
+  readAttrCookie,
+  resolveAttribution,
+} from '@/lib/attribution';
 
 /**
  * POST /api/meta/initiate-checkout
@@ -50,9 +55,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, capi: 'skipped', reason: 'env_missing' });
     }
 
-    const fbc = req.cookies.get('_fbc')?.value;
+    const fbcCookie = req.cookies.get('_fbc')?.value;
     const fbp = req.cookies.get('_fbp')?.value;
     const externalId = req.cookies.get('bw_uid')?.value;
+    // L4 — build _fbc from bw_attr's fbclid+ts if the browser cookie
+    // is empty (Pixel blocked / iOS ITP / in-app race).
+    const attr = readAttrCookie(req.cookies.get(ATTR_COOKIE)?.value);
+    const resolved = resolveAttribution({
+      cookieAttr: attr,
+      referrer: req.headers.get('referer') ?? '',
+      landingUrl: attr.landing_url ?? '',
+      fbc: fbcCookie ?? '',
+    });
+    const fbc =
+      fbcCookie ||
+      (resolved.fbclid ? `fb.1.${resolved.fbclidTs}.${resolved.fbclid}` : undefined);
     const clientIp =
       req.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
       req.headers.get('x-real-ip') ??

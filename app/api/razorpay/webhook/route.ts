@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { CHECKOUT_CONFIG } from '@/lib/checkout-config';
 import { sendMetaCapiEvents, hashEmail, type Utm } from '@/lib/meta-capi';
+import { resolveAttribution, type AttrLike } from '@/lib/attribution';
 
 /**
  * POST /api/razorpay/webhook
@@ -134,22 +135,66 @@ export async function POST(req: NextRequest) {
     } catch {
       console.error(`[webhook] paymentId=${paymentId} bad notes.utm JSON`);
     }
-    const utm: Utm = {
-      source:   utmPacked.s ?? '',
-      medium:   utmPacked.m ?? '',
-      campaign: utmPacked.c ?? '',
-      content:  utmPacked.n ?? '',
-      term:     utmPacked.t ?? '',
-      id:       utmPacked.i ?? '',
-    };
-    const fbclid = String(notes.clid ?? '');
-    const fbc    = String(notes.fbc  ?? '') || undefined;
-    const fbp    = String(notes.fbp  ?? '') || undefined;
+    const notesFbc = String(notes.fbc ?? '') || undefined;
+    const notesFbp = String(notes.fbp ?? '') || undefined;
+    const notesFbclid = String(notes.clid ?? '');
+    const notesFbclidTs = Number(String(notes.ts ?? '')) || 0;
+    const notesReferrer   = String(notes.rf ?? '') || undefined;
+    const notesLandingUrl = String(notes.lu ?? '') || undefined;
     const clientIp        = String(notes.ip ?? '') || undefined;
     const clientUserAgent = String(notes.ua ?? '') || undefined;
     const eventSourceUrl  = String(notes.esu ?? '') || CHECKOUT_CONFIG.capi.fallbackEventSourceUrl;
     const externalIdCookie = String(notes.uid ?? '') || undefined;
     const couponCode = String(notes.cpn ?? '');
+
+    // L6 — re-run resolveAttribution over what create-order packed.
+    // Defense-in-depth: if a future create-order regression writes stale
+    // or missing utm/fbclid, we can still recover from `rf` (referrer)
+    // or `_fbc`. Also repairs orders placed before this migration if a
+    // long-blob JSON slice ever wiped `notes.utm`.
+    const cookieAttrShape: AttrLike = {
+      source:      utmPacked.s ?? '',
+      medium:      utmPacked.m ?? '',
+      campaign:    utmPacked.c ?? '',
+      content:     utmPacked.n ?? '',
+      term:        utmPacked.t ?? '',
+      id:          utmPacked.i ?? '',
+      fbclid:      notesFbclid,
+      ts:          notesFbclidTs,
+      referrer:    notesReferrer ?? '',
+      landing_url: notesLandingUrl ?? '',
+    };
+    const resolved = resolveAttribution({
+      cookieAttr: cookieAttrShape,
+      referrer: notesReferrer ?? '',
+      landingUrl: notesLandingUrl ?? '',
+      fbc: notesFbc ?? '',
+    });
+
+    const utm: Utm = {
+      source:   resolved.utm.source,
+      medium:   resolved.utm.medium,
+      campaign: resolved.utm.campaign,
+      content:  resolved.utm.content,
+      term:     resolved.utm.term,
+      id:       resolved.utm.id,
+    };
+    // Prefer the raw _fbc if create-order packed one; otherwise build
+    // from the resolved fbclid + click ts (L4 defence at webhook layer
+    // too — belt and suspenders across the pipeline).
+    const fbc = notesFbc
+      ? notesFbc
+      : resolved.fbclid
+        ? `fb.1.${resolved.fbclidTs}.${resolved.fbclid}`
+        : undefined;
+    const fbp = notesFbp;
+    const fbclid = resolved.fbclid;
+
+    if (resolved.utmSource === 'none' && !resolved.fbclid) {
+      console.error(`[webhook] paymentId=${paymentId} ATTRIBUTION MISSING — utm+fbclid both empty after resolve`);
+    } else {
+      console.log(`[webhook] paymentId=${paymentId} attribution ${resolved.provenance}`);
+    }
 
     // ── Server-derived fields ───────────────────────────────────────────
     const rawAmount = payment.amount;

@@ -3,6 +3,14 @@ import Razorpay from 'razorpay';
 import crypto from 'crypto';
 import { CHECKOUT_CONFIG } from '@/lib/checkout-config';
 import { validateCoupon, type CouponResult } from '@/lib/coupons';
+import {
+  ATTR_COOKIE,
+  packJsonNote,
+  readAttrCookie,
+  resolveAttribution,
+  truncateNote,
+  type AttrLike,
+} from '@/lib/attribution';
 
 let razorpay: Razorpay | null = null;
 
@@ -24,17 +32,6 @@ function signFreeOrder(orderId: string, couponCode: string): string {
     .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET!)
     .update(`${orderId}|${couponCode}|free`)
     .digest('hex');
-}
-
-/**
- * Razorpay allows 15 note keys, 256 chars per value. To move ~20 customer
- * + attribution fields from the browser into the webhook, we consolidate
- * into JSON blobs for `cust` + `utm` and keep the rest as top-level keys.
- */
-function truncate(v: string | undefined | null, max = 256): string {
-  if (!v) return '';
-  const s = String(v);
-  return s.length > max ? s.slice(0, max) : s;
 }
 
 // Canonical checkout URL — no query string. Real URLs routinely blow past
@@ -78,7 +75,7 @@ export async function POST(req: NextRequest) {
     const rawCoupon: string = typeof body.couponCode === 'string' ? body.couponCode : '';
     const customer: CustomerBody | undefined = body.customer;
     const utm: UtmBody | undefined = body.utm;
-    const fbclid: string = typeof body.fbclid === 'string' ? body.fbclid : '';
+    const fbclidFromBody: string = typeof body.fbclid === 'string' ? body.fbclid : '';
 
     let amount: number = CHECKOUT_CONFIG.amountPaise;
     const currency: string = CHECKOUT_CONFIG.currency;
@@ -110,18 +107,56 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Standard paid-order branch — pack notes for the webhook ────────────
-    // Server-side signals we need to hand to the webhook because the webhook
-    // is server-to-server and shares no browser session with the buyer.
-    const fbc = req.cookies.get('_fbc')?.value;
-    const fbp = req.cookies.get('_fbp')?.value;
+    // L2 — cookie (bw_attr) is the PRIMARY attribution source. Client body
+    // (from legacy bodyworx_utm + bw_fbclid cookies) is a SUPPLEMENT.
+    // Referrer + _fbc are fallbacks. See lib/attribution.ts.
+    const fbcCookie = req.cookies.get('_fbc')?.value;
+    const fbpCookie = req.cookies.get('_fbp')?.value;
     const bwUid = req.cookies.get('bw_uid')?.value;
     const clientIp =
       req.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
       req.headers.get('x-real-ip') ??
       '';
     const clientUserAgent = req.headers.get('user-agent') ?? '';
+    const referrerHeader = req.headers.get('referer') ?? '';
 
-    const custBlob = JSON.stringify({
+    const cookieAttr = readAttrCookie(req.cookies.get(ATTR_COOKIE)?.value);
+    const bodyAttr: AttrLike = {
+      source:   utm?.source   ?? '',
+      medium:   utm?.medium   ?? '',
+      campaign: utm?.campaign ?? '',
+      content:  utm?.content  ?? '',
+      term:     utm?.term     ?? '',
+      id:       utm?.id       ?? '',
+      fbclid:   fbclidFromBody,
+    };
+
+    const resolved = resolveAttribution({
+      cookieAttr,
+      bodyAttr,
+      referrer: referrerHeader,
+      landingUrl: cookieAttr.landing_url ?? '',
+      fbc: fbcCookie ?? '',
+    });
+
+    // L4 — reconstruct _fbc from fbclid + click ts when the browser
+    // cookie is empty (Pixel blocked, iOS ITP, in-app browser race).
+    // Meta accepts this format verbatim; huge win for paid-social EMQ.
+    const fbc =
+      fbcCookie && fbcCookie.length > 0
+        ? fbcCookie
+        : resolved.fbclid
+          ? `fb.1.${resolved.fbclidTs}.${resolved.fbclid}`
+          : '';
+
+    if (resolved.utmSource === 'none') {
+      console.error('[create-order] ATTRIBUTION MISSING — no utm from cookie/body/referrer');
+    }
+
+    // L5 — JSON-safe packing. Replaces `truncate(JSON.stringify(...))` which
+    // silently wiped the whole blob when a long campaign name pushed it
+    // past 256 chars.
+    const custNote = packJsonNote({
       fn: customer?.firstName ?? '',
       ln: customer?.lastName  ?? '',
       em: customer?.email     ?? '',
@@ -131,27 +166,32 @@ export async function POST(req: NextRequest) {
       dl: customer?.dialCode  ?? '',
       oc: customer?.occupation ?? '',
     });
-    const utmBlob = JSON.stringify({
-      s: utm?.source   ?? '',
-      m: utm?.medium   ?? '',
-      c: utm?.campaign ?? '',
-      n: utm?.content  ?? '',
-      t: utm?.term     ?? '',
-      i: utm?.id       ?? '',
+    const utmNote = packJsonNote({
+      s: resolved.utm.source,
+      m: resolved.utm.medium,
+      c: resolved.utm.campaign,
+      n: resolved.utm.content,
+      t: resolved.utm.term,
+      i: resolved.utm.id,
     });
 
+    // 14 note keys, Razorpay allows 15 → 1 slot spare for L7
+    // (attribution_source) whenever we ship it.
     const notes: Record<string, string> = {
       kind: 'client_postnatal',
-      cust: truncate(custBlob),
-      utm:  truncate(utmBlob),
-      clid: truncate(fbclid),
-      fbc:  truncate(fbc),
-      fbp:  truncate(fbp),
-      ip:   truncate(clientIp, 45),
-      ua:   truncate(clientUserAgent),
+      cust: custNote,
+      utm:  utmNote,
+      clid: truncateNote(resolved.fbclid),
+      ts:   truncateNote(String(resolved.fbclidTs || '')),
+      rf:   truncateNote(resolved.referrer),
+      lu:   truncateNote(resolved.landingUrl),
+      fbc:  truncateNote(fbc),
+      fbp:  truncateNote(fbpCookie),
+      ip:   truncateNote(clientIp, 45),
+      ua:   truncateNote(clientUserAgent),
       esu:  CANONICAL_CHECKOUT_URL,
-      cpn:  truncate(coupon?.ok ? coupon.code : ''),
-      uid:  truncate(bwUid, 64),
+      cpn:  truncateNote(coupon?.ok ? coupon.code : ''),
+      uid:  truncateNote(bwUid, 64),
     };
 
     const order = await razorpay.orders.create({

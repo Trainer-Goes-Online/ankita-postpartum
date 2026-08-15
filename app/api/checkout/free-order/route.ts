@@ -3,6 +3,12 @@ import crypto from 'crypto';
 import { CHECKOUT_CONFIG } from '@/lib/checkout-config';
 import { validateCoupon } from '@/lib/coupons';
 import { hashEmail, type Utm } from '@/lib/meta-capi';
+import {
+  ATTR_COOKIE,
+  readAttrCookie,
+  resolveAttribution,
+  type AttrLike,
+} from '@/lib/attribution';
 
 /**
  * POST /api/checkout/free-order
@@ -77,18 +83,43 @@ export async function POST(req: NextRequest) {
     const paymentId = `free_pay_${Date.now()}_${crypto.randomBytes(6).toString('hex')}`;
 
     // Read request-level signals so the CRM row has the same shape as a
-    // real paid order (minus real payment id).
-    const fbc = req.cookies.get('_fbc')?.value ?? '';
+    // real paid order (minus real payment id). L2 — cookie is primary,
+    // body (utm from client) is a supplement, referrer + _fbc fall back.
+    const fbcCookie = req.cookies.get('_fbc')?.value ?? '';
     const fbp = req.cookies.get('_fbp')?.value ?? '';
-    const fbclid = req.cookies.get('bw_fbclid')?.value ?? '';
+    const legacyFbclid = req.cookies.get('bw_fbclid')?.value ?? '';
     const clientIp =
       req.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
       req.headers.get('x-real-ip') ??
       '';
     const clientUserAgent = req.headers.get('user-agent') ?? '';
+    const referrerHeader = req.headers.get('referer') ?? '';
     const resolvedEventSourceUrl =
       eventSourceUrl?.trim() || CHECKOUT_CONFIG.capi.fallbackEventSourceUrl;
     const externalIdEmailHash = hashEmail(customer.email) ?? '';
+
+    const cookieAttr = readAttrCookie(req.cookies.get(ATTR_COOKIE)?.value);
+    const bodyAttr: AttrLike = {
+      source:   utm?.source   ?? '',
+      medium:   utm?.medium   ?? '',
+      campaign: utm?.campaign ?? '',
+      content:  utm?.content  ?? '',
+      term:     utm?.term     ?? '',
+      id:       utm?.id       ?? '',
+      fbclid:   legacyFbclid,
+    };
+    const resolved = resolveAttribution({
+      cookieAttr,
+      bodyAttr,
+      referrer: referrerHeader,
+      landingUrl: cookieAttr.landing_url ?? '',
+      fbc: fbcCookie,
+    });
+    // L4 — build _fbc from fbclid+ts if the browser cookie was missing.
+    const fbc =
+      fbcCookie ||
+      (resolved.fbclid ? `fb.1.${resolved.fbclidTs}.${resolved.fbclid}` : '');
+    const fbclid = resolved.fbclid;
 
     const now = new Date();
     const pabblyPayload = {
@@ -108,12 +139,12 @@ export async function POST(req: NextRequest) {
       payment_date:      now.toLocaleDateString('en-IN', { timeZone: CHECKOUT_CONFIG.paymentTimezone }),
       payment_time:      now.toLocaleTimeString('en-IN', { timeZone: CHECKOUT_CONFIG.paymentTimezone }),
       payment_timestamp: now.toISOString(),
-      utm_source:        utm?.source   ?? '',
-      utm_medium:        utm?.medium   ?? '',
-      utm_campaign:      utm?.campaign ?? '',
-      utm_content:       utm?.content  ?? '',
-      utm_term:          utm?.term     ?? '',
-      utm_id:            utm?.id       ?? '',
+      utm_source:        resolved.utm.source,
+      utm_medium:        resolved.utm.medium,
+      utm_campaign:      resolved.utm.campaign,
+      utm_content:       resolved.utm.content,
+      utm_term:          resolved.utm.term,
+      utm_id:            resolved.utm.id,
       lead_id:           paymentId,
       created_at:        now.toISOString(),
       fbc:               fbc,
